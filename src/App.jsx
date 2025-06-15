@@ -1,5 +1,5 @@
 import './App.css'
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Shuffle, RotateCcw, Settings, Check, X } from 'lucide-react';
 
 const HIRAGANA_DATA = [
@@ -182,6 +182,7 @@ export default function HiraganaKatakanaApp() {
     setCards(shuffledCards);
     setCurrentIndex(0);
     setIsFlipped(false);
+    setStats({ correct: 0, total: 0 }); // bugfix 15/06/2025 - shuffling didnt reset score
   }, [settings]);
 
   const currentCard = cards[currentIndex];
@@ -216,6 +217,7 @@ const handleAnswer = useCallback((isCorrect) => {
     setCards(shuffledCards);
     setCurrentIndex(0);
     setIsFlipped(false);
+    setStats({ correct: 0, total: 0 }); // bugfix 15/06/2025 - shuffling didnt reset score
   }, [settings.mode]);
 
   const handleReset = useCallback(() => {
@@ -224,10 +226,34 @@ const handleAnswer = useCallback((isCorrect) => {
     setIsFlipped(false);
   }, []);
 
-  if (!currentCard) return <div>Loading...</div>;
+  // if (!currentCard) return <div>Loading...</div>;
+
+  // newfeature 15/06/2025 - keyboard shortcuts
+
+  const handleAnswerRef = useRef(handleAnswer);
+  handleAnswerRef.current = handleAnswer;
+
+  useEffect(() => {
+    const handleKeyPress = (e) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        setIsFlipped(prev => !prev);
+      }
+      if ((e.key === '1' || e.key === '2') && isFlipped) {
+        e.preventDefault();
+        handleAnswerRef.current(e.key === '2');
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [isFlipped]);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
+      {!currentCard ? (
+      <div>Loading...</div>
+    ) : (
       <div className="w-full max-w-md">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
@@ -314,7 +340,7 @@ const handleAnswer = useCallback((isCorrect) => {
             Reset Stats
           </button>
         </div>
-      </div>
+      </div>)}
 
       <SettingsModal
         isOpen={showSettings}
