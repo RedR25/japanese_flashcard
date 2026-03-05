@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>source - Developer Guidelines</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 1.5cm;
+        }
+        
+        * {
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: "DejaVu Sans", Helvetica, Arial, sans-serif;
+            font-size: 10pt;
+            line-height: 1.5;
+            color: #1a1a1a;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #fff;
+        }
+        
+        h1 {
+            font-size: 18pt;
+            color: #0f172a;
+            border-bottom: 2px solid #3b82f6;
+            padding-bottom: 8px;
+            margin: 0 0 16px 0;
+        }
+        
+        h2 {
+            font-size: 12pt;
+            color: #1e40af;
+            margin: 20px 0 10px 0;
+            padding-bottom: 4px;
+            border-bottom: 1px solid #cbd5e1;
+        }
+        
+        h3 {
+            font-size: 11pt;
+            color: #334155;
+            margin: 15px 0 8px 0;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+            font-size: 9pt;
+        }
+        
+        th, td {
+            border: 1px solid #cbd5e1;
+            padding: 6px 10px;
+            text-align: left;
+        }
+        
+        th {
+            background: #f1f5f9;
+            font-weight: 600;
+            color: #334155;
+        }
+        
+        tr:nth-child(even) {
+            background: #f8fafc;
+        }
+        
+        code {
+            background: #f1f5f9;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: "DejaVu Sans Mono", Courier, monospace;
+            font-size: 9pt;
+            color: #0f172a;
+        }
+        
+        pre {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 12px 16px;
+            border-radius: 6px;
+            font-family: "DejaVu Sans Mono", Courier, monospace;
+            font-size: 9pt;
+            overflow-x: auto;
+            margin: 10px 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        ul, ol {
+            margin: 10px 0;
+            padding-left: 24px;
+        }
+        
+        li {
+            margin: 4px 0;
+        }
+        
+        strong {
+            color: #0f172a;
+        }
+        
+        a {
+            color: #3b82f6;
+            text-decoration: none;
+        }
+        
+        p {
+            margin: 8px 0;
+        }
+        
+        /* Print styles */
+        @media print {
+            body {
+                padding: 0;
+                font-size: 9pt;
+            }
+            
+            h1 {
+                font-size: 16pt;
+            }
+            
+            h2 {
+                font-size: 11pt;
+                page-break-after: avoid;
+            }
+            
+            table, pre {
+                page-break-inside: avoid;
+            }
+            
+            .download-bar {
+                display: none;
+            }
+        }
+        
+        /* Download bar - only for HTML view */
+        .download-bar {
+            position: sticky;
+            top: 0;
+            background: #1e293b;
+            color: #f8fafc;
+            padding: 12px 20px;
+            margin: -20px -20px 20px -20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #334155;
+        }
+        
+        .download-bar span {
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .download-bar .controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        
+        .download-bar a,
+        .download-bar button {
+            background: #334155;
+            color: #94a3b8;
+            padding: 8px 14px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 500;
+            border: 1px solid #475569;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .download-bar a:hover,
+        .download-bar button:hover {
+            background: #3b82f6;
+            color: #fff;
+            border-color: #3b82f6;
+        }
+        
+        .download-bar svg {
+            width: 16px;
+            height: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="download-bar">
+        <span>source - Developer Guidelines</span>
+        <div class="controls">
+            <a href="dev_guidelines.docx" download>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                Download Word
+            </a>
+        </div>
+    </div>
+    <h1>source - Developer Guidelines</h1>
+
+<h2>1. Architecture</h2>
+
+<div style="font-family: monospace; text-align: center;">
+  <div style="border: 2px solid #333; padding: 10px; margin: 10px auto; max-width: 500px; background: #f5f5f5;">
+    <strong>API LAYER</strong><br/>
+    <code>src/</code> | <code>src/</code>
+  </div>
+  <div style="font-size: 20px;">↓</div>
+  <div style="border: 2px solid #333; padding: 10px; margin: 10px auto; max-width: 500px; background: #f5f5f5;">
+    <strong>SERVICE LAYER</strong><br/>
+    <code>src/</code> | <code>src/</code>
+  </div>
+  <div style="font-size: 20px;">↓</div>
+  <div style="border: 2px solid #333; padding: 10px; margin: 10px auto; max-width: 500px; background: #f5f5f5;">
+    <strong>DATA LAYER</strong><br/>
+    <code>src/</code> | <code>src/</code>
+  </div>
+</div>
+
+<table>
+  <tr><th>Directory</th><th>Purpose</th><th>Key Files</th></tr>
+  <tr>
+    <td>src/</td>
+    <td>All frontend source assets and styles for this project; single source folder for the CSS-first frontend</td>
+    <td>4 files in src/ (project contains 6 files total); primary language: .css</td>
+  </tr>
+</table>
+
+<table>
+  <tr><th>Directory</th><th>Purpose</th><th>Key Files</th></tr>
+  <tr>
+    <td>src/</td>
+    <td>Authoritative location for CSS and frontend source. Treat this as the only active code directory when adding or modifying styles.</td>
+    <td>4 files inside src/; overall repository has 6 files; CSS is primary</td>
+  </tr>
+</table>
+
+<h2>2. Code Conventions</h2>
+
+<table>
+  <tr><th>Type</th><th>Convention</th><th>Example from Project</th></tr>
+  <tr>
+    <td>File type</td>
+    <td>CSS-first repository; styling files are the primary artifacts</td>
+    <td>Primary language: .css; repository contains 6 files with 4 under src/</td>
+  </tr>
+</table>
+
+<h2>3. Key Patterns</h2>
+<ul>
+  <li><strong>Single-source folder</strong>: src/ is the centralized location for all frontend assets and styles. The project relies on a flat source layout rather than multi-package or multi-folder structure.</li>
+  <li><strong>CSS-first styling</strong>: Repository primary language is .css and the main work is editing and adding CSS files inside src/. Changes are localized to style assets rather than JS/templating.</li>
+  <li><strong>Small, focused codebase</strong>: With 6 files total and 4 in src/, the pattern is minimal footprint and rapid edits — prefer small, targeted changes in src/ rather than large refactors.</li>
+</ul>
+
+<h2>4. Adding Features Checklist</h2>
+<ol>
+  <li>Create the style file in src/ as a .css file. Name the file clearly to reflect the feature (place it directly under src/ since the project uses a single source folder).</li>
+  <li>Locate existing CSS entry files in src/ and add an import or merge. If there is a main stylesheet inside src/, append an @import or copy component rules into that file. If no single entry exists, place the new file alongside the other files in src/ to keep structure consistent.</li>
+  <li>Keep changes minimal and isolated: add selectors scoped to the new feature to avoid global collisions; use class selectors rather than relying on element selectors when adding components inside src/.</li>
+  <li>Run any local preview workflow you use to validate styling (open the project in the browser or the host application that consumes src/ assets). If the repository is consumed by a build, ensure your new file is included by the build step that reads src/.</li>
+  <li>Commit with a clear message referencing src/ and the feature (example pattern: "src: add <feature>-styles.css"). Include which files in src/ changed and why.</li>
+  <li>When removing or renaming files in src/, update any import or build references immediately to avoid missing-assets in the small codebase.</li>
+</ol>
+
+<h2>5. Quick Reference</h2>
+<table>
+  <tr><th>Task</th><th>Command/Location</th></tr>
+  <tr>
+    <td>Primary source directory</td>
+    <td>src/</td>
+  </tr>
+  <tr>
+    <td>Primary language (files to edit)</td>
+    <td>.css (4 files in src/; 6 files in repository)</td>
+  </tr>
+  <tr>
+    <td>Add new style</td>
+    <td>Create a .css file in src/ and import it from the main stylesheet inside src/ or place it alongside existing src/ files</td>
+  </tr>
+  <tr>
+    <td>Where to check file counts</td>
+    <td>Repository root (6 files total); src/ contains 4 files</td>
+  </tr>
+</table>
+</body>
+</html>

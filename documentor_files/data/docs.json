@@ -1,0 +1,70 @@
+{
+  "project": "source",
+  "generated": "2026-03-05T05:33:16.176775",
+  "language": "en",
+  "file_count": 9,
+  "files": [
+    {
+      "path": "documentor_files/README_SUMMARY.md",
+      "title": "Project Summary",
+      "type": "summary",
+      "directory": ""
+    },
+    {
+      "path": "eslint.config.js.md",
+      "title": "eslint.config.js",
+      "type": "file",
+      "directory": "",
+      "change_label": "added"
+    },
+    {
+      "path": "index.html.md",
+      "title": "index.html",
+      "type": "file",
+      "directory": "",
+      "change_label": "added"
+    },
+    {
+      "path": "README.md",
+      "title": "Project Overview",
+      "type": "readme",
+      "directory": "",
+      "change_label": null
+    },
+    {
+      "path": "src/App.css.md",
+      "title": "App.css",
+      "type": "file",
+      "directory": "src",
+      "change_label": "added"
+    },
+    {
+      "path": "src/App.jsx.md",
+      "title": "App.jsx",
+      "type": "file",
+      "directory": "src",
+      "change_label": "added"
+    },
+    {
+      "path": "src/index.css.md",
+      "title": "index.css",
+      "type": "file",
+      "directory": "src",
+      "change_label": "added"
+    },
+    {
+      "path": "src/main.jsx.md",
+      "title": "main.jsx",
+      "type": "file",
+      "directory": "src",
+      "change_label": "added"
+    },
+    {
+      "path": "src/README.md",
+      "title": "src",
+      "type": "readme",
+      "directory": "src",
+      "change_label": null
+    }
+  ]
+}

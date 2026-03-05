@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>source - PRD</title>
+<style>
+@page {
+    size: A4;
+    margin: 2cm;
+}
+body {
+    font-family: "DejaVu Sans", 'Helvetica Neue', Arial, sans-serif;
+    font-size: 11pt;
+    line-height: 1.6;
+    color: #333;
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+}
+h1 {
+    color: #1a365d;
+    border-bottom: 3px solid #3182ce;
+    padding-bottom: 10px;
+    font-size: 24pt;
+}
+h2 {
+    color: #2c5282;
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 5px;
+    margin-top: 25px;
+    font-size: 16pt;
+}
+h3 {
+    color: #2d3748;
+    font-size: 13pt;
+}
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 15px 0;
+}
+th, td {
+    border: 1px solid #e2e8f0;
+    padding: 10px;
+    text-align: left;
+}
+th {
+    background: #edf2f7;
+    font-weight: 600;
+}
+tr:nth-child(even) {
+    background: #f7fafc;
+}
+ul, ol {
+    margin: 10px 0;
+    padding-left: 25px;
+}
+li {
+    margin: 5px 0;
+}
+code {
+    background: #edf2f7;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: "DejaVu Sans Mono", 'Courier New', monospace;
+    font-size: 10pt;
+}
+strong {
+    color: #1a365d;
+}
+p {
+    margin: 10px 0;
+}
+.header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+.footer {
+    margin-top: 40px;
+    padding-top: 20px;
+    border-top: 1px solid #e2e8f0;
+    font-size: 9pt;
+    color: #718096;
+    text-align: center;
+}
+</style>
+</head>
+<body>
+<h1>Product Requirements Document — <code>source</code> (Frontend)</h1>
+
+<h2>1. Product Overview</h2>
+
+<h3>Vision Statement</h3>
+<p><strong><code>source</code></strong> is a minimal, production-aware frontend starter template built on React and Vite that accelerates developer onboarding and enables fast iterative development while encouraging good code quality practices. It exists to reduce setup friction and provide a reliable foundation for building modern single-page applications.</p>
+
+<h3>Problem Statement</h3>
+<p>Teams and individual developers frequently spend significant time configuring build tools, hot-reload development servers, and linting rules for new React projects. Inconsistent setups lead to slower onboarding, fragile development workflows, and diverging quality standards across projects. There is a need for a lightweight, opinionated starter that delivers fast feedback during development and clear guidance for production readiness.</p>
+
+<h3>Solution Summary</h3>
+<p><code>source</code> addresses these problems by providing a streamlined React + Vite template with hot module replacement (HMR), recommended ESLint settings, and clear guidance for integrating TypeScript and alternative fast-refresh plugins. The template emphasizes fast developer feedback loops, sensible defaults for linting, and optional paths for production-grade configurations.</p>
+
+<h2>2. Target Users</h2>
+<table>
+  <tr>
+    <th>User Type</th>
+    <th>Description</th>
+    <th>Primary Goals</th>
+  </tr>
+  <tr>
+    <td>Frontend Developer</td>
+    <td>Individual contributors building React user interfaces who need a quick, reliable project scaffold.</td>
+    <td>Start coding immediately, iterate quickly with HMR, maintain code quality with linting.</td>
+  </tr>
+  <tr>
+    <td>Full-Stack Developer</td>
+    <td>Developers integrating frontend into larger applications or backend services, seeking a predictable frontend baseline.</td>
+    <td>Integrate frontend with backend APIs, ensure consistent build and deploy processes, adopt best practices.</td>
+  </tr>
+  <tr>
+    <td>Engineering Manager / Tech Lead</td>
+    <td>Leads who standardize project templates and enforce quality standards across teams.</td>
+    <td>Reduce onboarding time, ensure maintainability and consistency across projects, lower technical debt.</td>
+  </tr>
+  <tr>
+    <td>QA / Test Engineer</td>
+    <td>Engineers validating application behavior and performance who need reliable dev builds.</td>
+    <td>Reproduce environments locally, validate hot-reload behavior, ensure linting and build outputs are deterministic.</td>
+  </tr>
+  <tr>
+    <td>Developer Advocate / Onboarding Specialist</td>
+    <td>Individuals responsible for documentation and developer experience improvements.</td>
+    <td>Provide clear guidance for getting started, recommend best practices for production readiness.</td>
+  </tr>
+</table>
+
+<h2>3. Core Features</h2>
+
+<h3>Development Experience</h3>
+<ul>
+  <li>Fast local development server with hot module replacement (HMR) enabling near-instant visual feedback during UI changes.</li>
+  <li>Minimal, ready-to-run React application scaffold to accelerate time to first render.</li>
+  <li>Compatibility with popular fast-refresh plugins: <code>@vitejs/plugin-react</code> (Babel-based) and an alternative SWC-based plugin for fast refresh.</li>
+</ul>
+
+<h3>Quality & Tooling</h3>
+<ul>
+  <li>Out-of-the-box ESLint configuration with recommended rules to enforce consistent code style and catch common issues early.</li>
+  <li>Guidance and optional setup for TypeScript and type-aware linting to enable stricter static analysis for production applications.</li>
+</ul>
+
+<h3>Build & Production</h3>
+<ul>
+  <li>Production-oriented build pipeline using Vite optimizations for efficient bundling and fast cold starts in production deployments.</li>
+  <li>Clear documentation sections for expanding linting and configuring TypeScript integration to align development and production practices.</li>
+</ul>
+
+<h3>Extensibility</h3>
+<ul>
+  <li>Lightweight template structure that can be extended with additional tools (testing frameworks, component libraries, CI/CD) without heavy refactoring.</li>
+  <li>Plugin-first approach to allow teams to choose the best fast-refresh implementation for their needs (Babel vs SWC).</li>
+</ul>
+
+<h2>4. Functional Requirements</h2>
+<ol>
+  <li>FR-001: The system shall provide a local development server that starts successfully and serves the React application within a reasonable time (target: < 5 seconds on a developer machine).</li>
+  <li>FR-002: The system shall enable hot module replacement so UI updates are reflected in the browser without a full page reload.</li>
+  <li>FR-003: The template shall include an ESLint configuration with a recommended baseline of rules to be applied by default.</li>
+  <li>FR-004: The template shall document and support at least two officially supported fast-refresh plugin options: a Babel-based plugin and an SWC-based plugin, with guidance on choosing between them.</li>
+  <li>FR-005: The template shall provide documented guidance and example configuration for adopting TypeScript and integrating <em>type-aware</em> lint rules.</li>
+  <li>FR-006: The system shall produce a production build using Vite that outputs optimized static assets suitable for deployment to common hosting environments.</li>
+  <li>FR-007: The starter shall include clear README content describing how to start the dev server, build for production, and expand linting rules for larger applications.</li>
+  <li>FR-008: The template shall maintain a minimal and opinionated project structure that supports incremental addition of features (routing, state management, testing) without breaking defaults.</li>
+  <li>FR-009: The template shall fail fast and present actionable error messages when common misconfigurations occur (e.g., missing dependencies, incompatible plugin selection).</li>
+  <li>FR-010: The template shall allow teams to opt into stricter configurations (TypeScript, stricter lint rules) without requiring a full template replacement.</li>
+</ol>
+
+<h2>5. Non-Functional Requirements</h2>
+
+<h3>Performance</h3>
+<ul>
+  <li>Dev server startup time: target < 5 seconds on standard developer hardware.</li>
+  <li>HMR update latency: target < 250ms for UI updates reflecting code changes.</li>
+  <li>Production build time: target reasonable completion (< 60 seconds for small-to-medium apps) while producing optimized bundles.</li>
+</ul>
+
+<h3>Security</h3>
+<ul>
+  <li>Provide secure default configurations (no exposed dev-only endpoints in production builds).</li>
+  <li>Documentation should call out best practices for handling secrets and environment variables outside the template.</li>
+  <li>Linting defaults should help catch common security issues (e.g., unsanitized DOM insertion) where feasible.</li>
+</ul>
+
+<h3>Scalability</h3>
+<ul>
+  <li>Template structure and build configuration must support growth to medium-to-large single-page applications without requiring fundamental architectural changes.</li>
+  <li>Support incremental adoption of code-splitting and lazy-loading patterns enabled by Vite.</li>
+</ul>
+
+<h3>Reliability</h3>
+<ul>
+  <li>Deterministic builds: identical inputs should produce consistent outputs to enable reproducible deployments.</li>
+  <li>Clear and actionable error reporting for build and dev-time failures.</li>
+</ul>
+
+<h3>Usability</h3>
+<ul>
+  <li>Onboarding time for a new developer using the template should be minimal (target: < 30 minutes to a working dev environment and initial code change cycle).</li>
+  <li>Documentation must be concise and focused on common developer tasks: start dev server, apply linting, build for production, and add TypeScript.</li>
+</ul>
+
+<h2>6. Success Metrics</h2>
+<table>
+  <tr>
+    <th>Metric</th>
+    <th>Target</th>
+    <th>Measurement Method</th>
+  </tr>
+  <tr>
+    <td>Time to First Render</td>
+    <td>&lt; 5 minutes from clone to viewing the app</td>
+    <td>Onboarding checklist completion time measured during developer onboarding sessions and automated CI smoke tests.</td>
+  </tr>
+  <tr>
+    <td>Dev Server Start Time</td>
+    <td>&lt; 5 seconds</td>
+    <td>Automated performance measurement on representative developer machines.</td>
+  </tr>
+  <tr>
+    <td>HMR Update Latency</td>
+    <td>&lt; 250ms for small UI changes</td>
+    <td>Instrumented timing of file change to browser update during development sessions.</td>
+  </tr>
+  <tr>
+    <td>Adoption Rate</td>
+    <td>Baseline: number of projects adopting template within first 6 months (target depends on organization)</td>
+    <td>Repository/template usage metrics, internal project inventory, or package download stats.</td>
+  </tr>
+  <tr>
+    <td>Build Success Rate in CI</td>
+    <td>&gt; 99%</td>
+    <td>CI build pass/fail statistics across projects using the template.</td>
+  </tr>
+  <tr>
+    <td>Developer Satisfaction</td>
+    <td>Average satisfaction score ≥ 4/5</td>
+    <td>Periodic developer surveys and qualitative feedback during retrospectives.</td>
+  </tr>
+</table>
+
+<h2>7. Constraints & Dependencies</h2>
+
+<h3>Technical Constraints</h3>
+<ul>
+  <li>Requires a Node.js runtime compatible with the Vite and React ecosystem (specific version guidance to be documented).</li>
+  <li>Relies on Vite and its plugin ecosystem for dev server and build features; behavior is influenced by those upstream tools.</li>
+  <li>Template design assumes modern browser support for ES modules in development and production environments unless additional polyfills are added.</li>
+</ul>
+
+<h3>Business Constraints</h3>
+<ul>
+  <li>Template must remain lightweight and easy to maintain; avoid coupling to specific backend frameworks or organizational CI/CD implementations.</li>
+  <li>Decisions about default tool choices (Babel vs SWC, TypeScript opt-in) must balance broad applicability and maintainability.</li>
+</ul>
+
+<h3>External Dependencies</h3>
+<ul>
+  <li><code>Vite</code> — development server and build tooling.</li>
+  <li><code>React</code> — UI library used by the template.</li>
+  <li>Fast-refresh plugins (Babel-based and SWC-based) — recommended options for dev refresh experience.</li>
+  <li><code>ESLint</code> — static analysis and linting.</li>
+  <li>Optional: <code>TypeScript</code> and <code>@typescript-eslint</code> for type-aware linting when teams opt in.</li>
+</ul>
+
+<h2>8. Future Considerations</h2>
+<ul>
+  <li>Provide a TypeScript-first variant of the template with stricter defaults and example typed components to reduce migration effort.</li>
+  <li>Include an opinionated testing setup (e.g., unit and integration testing examples with Vitest or similar) and example test coverage targets.</li>
+  <li>Offer an accessibility (a11y) linting and auditing example to encourage accessible component development.</li>
+  <li>Provide a sample CI/CD pipeline and deployment examples for common hosting platforms to accelerate production adoption.</li>
+  <li>Bundle common integrations: storybook or component library scaffolding, state-management examples, and routing patterns to reduce initial architectural decisions.</li>
+  <li>Add guidance and templates for monorepo usage and multi-package projects for larger organizations.</li>
+  <li>Automate developer experience improvements: pre-commit hooks, code formatters, and marketplace or starter-gallery visibility metrics.</li>
+</ul>
+<div class="footer">
+    <p>Product Requirements Document - source</p>
+</div>
+</body>
+</html>

@@ -1,0 +1,63 @@
+{
+  "services": {},
+  "dependencies": [],
+  "module_groups": {
+    "src": {
+      "id": "src",
+      "name": "Src",
+      "layer_type": "application",
+      "directory_type": "application",
+      "files": [
+        "src/App.css",
+        "src/App.jsx",
+        "src/index.css",
+        "src/main.jsx"
+      ],
+      "service_connections": [],
+      "internal_layers": {
+        "model": {
+          "name": "Domain Models",
+          "files": [
+            "src/App.css",
+            "src/App.jsx",
+            "src/index.css",
+            "src/main.jsx"
+          ],
+          "confidence": 0.3,
+          "component_summary": {}
+        }
+      }
+    },
+    "root": {
+      "id": "root",
+      "name": "Root",
+      "layer_type": "application",
+      "directory_type": "application",
+      "files": [
+        "eslint.config.js",
+        "index.html"
+      ],
+      "service_connections": [],
+      "internal_layers": {
+        "model": {
+          "name": "Domain Models",
+          "files": [
+            "eslint.config.js",
+            "index.html"
+          ],
+          "confidence": 0.3,
+          "component_summary": {}
+        }
+      }
+    }
+  },
+  "services_by_type": {},
+  "stats": {
+    "total_services": 0,
+    "total_dependencies": 0,
+    "total_module_groups": 2,
+    "services_by_type": {},
+    "high_confidence_count": 0,
+    "avg_confidence": 0
+  }
+}

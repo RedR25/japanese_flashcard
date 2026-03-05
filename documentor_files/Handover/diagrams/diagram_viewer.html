@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>source - Architecture Diagrams</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-tertiary: #334155;
+            --text-primary: #f8fafc;
+            --text-secondary: #e2e8f0;
+            --text-muted: #94a3b8;
+            --text-faint: #64748b;
+            --accent: #3b82f6;
+            --border: rgba(148, 163, 184, 0.1);
+            --border-solid: #334155;
+            --diagram-bg: #ffffff;
+            --grid-color: rgba(51, 65, 85, 0.3);
+        }
+        
+        [data-theme="light"] {
+            --bg-primary: #f8fafc;
+            --bg-secondary: #ffffff;
+            --bg-tertiary: #e2e8f0;
+            --text-primary: #0f172a;
+            --text-secondary: #1e293b;
+            --text-muted: #475569;
+            --text-faint: #64748b;
+            --accent: #2563eb;
+            --border: rgba(148, 163, 184, 0.2);
+            --border-solid: #cbd5e1;
+            --diagram-bg: #ffffff;
+            --grid-color: rgba(148, 163, 184, 0.3);
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            min-height: 100vh;
+            color: var(--text-secondary);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            padding: 0.75rem 1.5rem;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 56px;
+        }
+        
+        .header-left { display: flex; align-items: center; gap: 1rem; }
+        .header h1 { font-size: 1.125rem; font-weight: 600; color: var(--text-primary); }
+        .header .subtitle { font-size: 0.75rem; color: var(--text-faint); padding-left: 1rem; border-left: 1px solid var(--border-solid); }
+        .controls { display: flex; gap: 0.5rem; align-items: center; }
+        .control-group { display: flex; gap: 0.25rem; padding: 0.25rem; background: var(--bg-tertiary); border-radius: 8px; border: 1px solid var(--border); }
+        .tabs { display: flex; gap: 0.25rem; padding: 0.25rem; background: var(--bg-tertiary); border-radius: 8px; border: 1px solid var(--border); margin-left: 1rem; }
+        .tab-btn { padding: 0.5rem 1rem; border: none; background: transparent; color: var(--text-muted); border-radius: 6px; cursor: pointer; font-size: 0.8125rem; font-weight: 500; transition: all 0.15s ease; display: flex; align-items: center; gap: 0.5rem; }
+        .tab-btn:hover { background: var(--border); color: var(--text-primary); }
+        .tab-btn.active { background: var(--accent); color: #fff; }
+        .tab-btn.disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+        .tab-btn svg { width: 16px; height: 16px; }
+        .diagram-content.hidden { display: none; }
+        .btn { padding: 0.5rem 0.75rem; border: none; background: transparent; color: var(--text-muted); border-radius: 6px; cursor: pointer; font-size: 0.8125rem; font-weight: 500; transition: all 0.15s ease; display: flex; align-items: center; gap: 0.375rem; }
+        .btn:hover { background: var(--border); color: var(--text-primary); }
+        .btn svg { width: 16px; height: 16px; }
+        .theme-toggle { background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem; cursor: pointer; color: var(--text-muted); display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+        .theme-toggle:hover { color: var(--text-primary); border-color: var(--accent); }
+        .theme-toggle svg { width: 18px; height: 18px; }
+        .icon-sun, .icon-moon { display: none; }
+        [data-theme="dark"] .icon-sun { display: block; }
+        [data-theme="light"] .icon-moon { display: block; }
+        .divider { width: 1px; height: 24px; background: var(--border-solid); margin: 0 0.5rem; }
+        
+        .container {
+            position: fixed;
+            top: 56px;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            overflow: hidden;
+            background: var(--bg-secondary);
+        }
+        
+        .diagram-viewport {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            cursor: grab;
+            background: 
+                linear-gradient(90deg, var(--grid-color) 1px, transparent 1px),
+                linear-gradient(var(--grid-color) 1px, transparent 1px);
+            background-size: 20px 20px;
+            position: relative;
+        }
+        
+        .diagram-viewport:active { cursor: grabbing; }
+        
+        .diagram-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            transform-origin: 0 0;
+        }
+        
+        .diagram-content {
+            background: var(--diagram-bg);
+            border-radius: 16px;
+            padding: 2.5rem;
+            box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.05), 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            display: inline-block;
+        }
+        
+        [data-theme="light"] .diagram-content {
+            box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 10px 40px -10px rgba(0, 0, 0, 0.15);
+        }
+        
+        .diagram-content pre.mermaid { margin: 0; }
+        .diagram-content svg { display: block; max-width: none !important; height: auto !important; }
+        
+        .zoom-indicator {
+            position: fixed;
+            bottom: 1rem;
+            right: 1rem;
+            background: var(--bg-secondary);
+            padding: 0.5rem 0.75rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            border: 1px solid var(--border);
+            font-family: 'SF Mono', Monaco, monospace;
+        }
+        
+        body.fullscreen .header { display: none; }
+        body.fullscreen .container { top: 0; }
+        body.fullscreen .exit-fullscreen { display: flex; }
+        
+        .exit-fullscreen { display: none; position: fixed; top: 1rem; right: 1rem; z-index: 1001; padding: 0.75rem 1rem; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); cursor: pointer; font-size: 0.875rem; align-items: center; gap: 0.5rem; }
+        .exit-fullscreen:hover { background: var(--bg-tertiary); }
+        
+        .help-tooltip { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); background: var(--bg-secondary); padding: 0.75rem 1.25rem; border-radius: 8px; font-size: 0.75rem; color: var(--text-muted); border: 1px solid var(--border); opacity: 0; transition: opacity 0.3s ease; pointer-events: none; }
+        .help-tooltip.visible { opacity: 1; }
+        .help-tooltip kbd { background: var(--bg-tertiary); padding: 0.125rem 0.375rem; border-radius: 4px; margin: 0 0.25rem; font-family: 'SF Mono', Monaco, monospace; }
+        
+        .no-data { text-align: center; color: var(--text-faint); padding: 4rem 2rem; font-size: 1rem; }
+    </style>
+</head>
+<body data-theme="dark">
+    <header class="header">
+        <div class="header-left">
+            <h1>source</h1>
+            <span class="subtitle">Architecture Diagrams</span>
+        </div>
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="flowchart" onclick="switchTab('flowchart')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                High Level Diagram
+            </button>
+            <button class="tab-btn disabled" data-tab="sequence" onclick="switchTab('sequence')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="4" x2="6" y2="20"/><line x1="18" y1="4" x2="18" y2="20"/><line x1="6" y1="8" x2="18" y2="8"/><line x1="18" y1="14" x2="6" y2="14"/></svg>
+                API Sequence
+            </button>
+        </div>
+        <div class="controls">
+            <div class="control-group">
+                <button class="btn" onclick="zoomOut()" title="Zoom Out (-)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg></button>
+                <button class="btn" onclick="zoomIn()" title="Zoom In (+)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg></button>
+                <button class="btn" onclick="fitToScreen()" title="Fit to Screen (F)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg></button>
+                <button class="btn" onclick="resetView()" title="Reset (0)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></button>
+            </div>
+            <div class="divider"></div>
+            <div class="control-group">
+                <button class="btn" onclick="downloadSvg()" title="Download SVG"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>SVG</button>
+                <button class="btn" onclick="downloadPng()" title="Download PNG"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>PNG</button>
+            </div>
+            <div class="divider"></div>
+            <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
+                <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            </button>
+            <button class="btn" onclick="toggleFullscreen()" title="Fullscreen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg></button>
+        </div>
+    </header>
+    
+    <button class="exit-fullscreen" onclick="toggleFullscreen()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>Exit Fullscreen</button>
+    
+    <main class="container">
+        <div class="diagram-viewport" id="viewport">
+            <div class="diagram-canvas" id="canvas">
+                <div id="flowchart-content" class="diagram-content">
+                    <pre class="mermaid">flowchart LR
+  subgraph Application
+    root[root]
+    src[src]
+  end
+
+  root -->|depends on| src</pre>
+                </div>
+                <div id="sequence-content" class="diagram-content hidden">
+                    <div style="text-align:center;color:#64748b;padding:3rem;">No API endpoints detected</div>
+                </div>
+            </div>
+        </div>
+    </main>
+    
+    <div class="zoom-indicator" id="zoomIndicator">100%</div>
+    <div class="help-tooltip" id="helpTooltip"><kbd>Scroll</kbd> zoom <kbd>Drag</kbd> pan <kbd>F</kbd> fit <kbd>0</kbd> reset <kbd>1</kbd>/<kbd>2</kbd> tabs <kbd>T</kbd> theme</div>
+
+    <script>
+        const viewport = document.getElementById('viewport');
+        const canvas = document.getElementById('canvas');
+        const zoomIndicator = document.getElementById('zoomIndicator');
+        const helpTooltip = document.getElementById('helpTooltip');
+        
+        let zoom = 1;
+        let panX = 0;
+        let panY = 0;
+        let isPanning = false;
+        let startX = 0;
+        let startY = 0;
+        let startPanX = 0;
+        let startPanY = 0;
+        let currentTab = 'flowchart';
+        let diagramSizes = {};
+        
+        const MIN_ZOOM = 0.1;
+        const MAX_ZOOM = 5;
+        const ZOOM_STEP = 0.15;
+        
+        function updateTransform() {
+            canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+            zoomIndicator.textContent = `${Math.round(zoom * 100)}%`;
+        }
+        
+        function getDiagramSize() {
+            const content = document.getElementById(`${currentTab}-content`);
+            const svg = content.querySelector('svg');
+            if (!svg) return { width: 400, height: 300 };
+            
+            if (diagramSizes[currentTab]) return diagramSizes[currentTab];
+            
+            const bbox = svg.getBBox();
+            const padding = 80;
+            diagramSizes[currentTab] = {
+                width: bbox.width + padding,
+                height: bbox.height + padding
+            };
+            return diagramSizes[currentTab];
+        }
+        
+        function zoomAt(x, y, delta) {
+            const oldZoom = zoom;
+            const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom * (1 + delta)));
+            
+            if (newZoom === oldZoom) return;
+            
+            const contentX = (x - panX) / oldZoom;
+            const contentY = (y - panY) / oldZoom;
+            
+            zoom = newZoom;
+            panX = x - contentX * zoom;
+            panY = y - contentY * zoom;
+            
+            updateTransform();
+        }
+        
+        function zoomIn() {
+            const rect = viewport.getBoundingClientRect();
+            zoomAt(rect.width / 2, rect.height / 2, ZOOM_STEP);
+        }
+        
+        function zoomOut() {
+            const rect = viewport.getBoundingClientRect();
+            zoomAt(rect.width / 2, rect.height / 2, -ZOOM_STEP);
+        }
+        
+        function fitToScreen() {
+            const size = getDiagramSize();
+            const rect = viewport.getBoundingClientRect();
+            const margin = 60;
+            
+            const scaleX = (rect.width - margin) / size.width;
+            const scaleY = (rect.height - margin) / size.height;
+            
+            zoom = Math.min(scaleX, scaleY, 1.5);
+            zoom = Math.max(zoom, MIN_ZOOM);
+            
+            panX = (rect.width - size.width * zoom) / 2;
+            panY = (rect.height - size.height * zoom) / 2;
+            
+            updateTransform();
+        }
+        
+        function resetView() {
+            zoom = 1;
+            const size = getDiagramSize();
+            const rect = viewport.getBoundingClientRect();
+            panX = (rect.width - size.width * zoom) / 2;
+            panY = (rect.height - size.height * zoom) / 2;
+            updateTransform();
+        }
+        
+        viewport.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const rect = viewport.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
+            zoomAt(x, y, delta);
+        }, { passive: false });
+        
+        viewport.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return;
+            isPanning = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            startPanX = panX;
+            startPanY = panY;
+            viewport.style.cursor = 'grabbing';
+            e.preventDefault();
+        });
+        
+        window.addEventListener('mousemove', (e) => {
+            if (!isPanning) return;
+            panX = startPanX + (e.clientX - startX);
+            panY = startPanY + (e.clientY - startY);
+            updateTransform();
+        });
+        
+        window.addEventListener('mouseup', () => {
+            if (isPanning) {
+                isPanning = false;
+                viewport.style.cursor = 'grab';
+            }
+        });
+        
+        function switchTab(tab) {
+            const btn = document.querySelector(`[data-tab="${tab}"]`);
+            if (!btn || btn.classList.contains('disabled')) return;
+            
+            currentTab = tab;
+            
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            
+            document.querySelectorAll('.diagram-content').forEach(c => c.classList.add('hidden'));
+            document.getElementById(`${tab}-content`).classList.remove('hidden');
+            
+            setTimeout(fitToScreen, 50);
+        }
+        
+        function toggleTheme() {
+            const isDark = document.body.getAttribute('data-theme') === 'dark';
+            const newTheme = isDark ? 'light' : 'dark';
+            document.body.setAttribute('data-theme', newTheme);
+            localStorage.setItem('diagram-theme', newTheme);
+        }
+        
+        function toggleFullscreen() {
+            document.body.classList.toggle('fullscreen');
+            setTimeout(fitToScreen, 100);
+        }
+        
+        function downloadSvg() {
+            const content = document.getElementById(`${currentTab}-content`);
+            const svg = content.querySelector('svg');
+            if (!svg) return;
+            const clone = svg.cloneNode(true);
+            clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+            const blob = new Blob([new XMLSerializer().serializeToString(clone)], { type: 'image/svg+xml' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `source-${currentTab}.svg`;
+            a.click();
+        }
+        
+        function downloadPng() {
+            const content = document.getElementById(`${currentTab}-content`);
+            const svg = content.querySelector('svg');
+            if (!svg) return;
+            const img = new Image();
+            img.onload = () => {
+                const cvs = document.createElement('canvas');
+                cvs.width = img.width * 2;
+                cvs.height = img.height * 2;
+                const ctx = cvs.getContext('2d');
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(0, 0, cvs.width, cvs.height);
+                ctx.drawImage(img, 0, 0, cvs.width, cvs.height);
+                const a = document.createElement('a');
+                a.href = cvs.toDataURL('image/png');
+                a.download = `source-${currentTab}.png`;
+                a.click();
+            };
+            img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(new XMLSerializer().serializeToString(svg))));
+        }
+        
+        document.addEventListener('keydown', (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            switch(e.key.toLowerCase()) {
+                case 'f': fitToScreen(); break;
+                case '0': resetView(); break;
+                case '+': case '=': zoomIn(); break;
+                case '-': zoomOut(); break;
+                case '1': switchTab('flowchart'); break;
+                case '2': switchTab('sequence'); break;
+                case 't': toggleTheme(); break;
+            }
+        });
+        
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'base',
+            themeVariables: {
+                fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                fontSize: '14px',
+                primaryColor: '#3b82f6',
+                primaryTextColor: '#1e293b',
+                primaryBorderColor: '#93c5fd',
+                lineColor: '#64748b',
+                secondaryColor: '#f1f5f9',
+                tertiaryColor: '#e0f2fe',
+                background: '#ffffff',
+                mainBkg: '#ffffff',
+                nodeBorder: '#93c5fd',
+                clusterBkg: '#f8fafc',
+                clusterBorder: '#cbd5e1',
+                titleColor: '#0f172a',
+                edgeLabelBackground: '#ffffff',
+                actorBkg: '#dbeafe',
+                actorBorder: '#3b82f6',
+                actorTextColor: '#1e293b',
+                actorLineColor: '#94a3b8',
+                signalColor: '#1e293b',
+                signalTextColor: '#1e293b',
+                labelBoxBkgColor: '#f1f5f9',
+                labelBoxBorderColor: '#cbd5e1',
+                labelTextColor: '#1e293b',
+                loopTextColor: '#1e293b',
+                noteBkgColor: '#fef3c7',
+                noteBorderColor: '#f59e0b',
+                noteTextColor: '#1e293b',
+                activationBkgColor: '#dbeafe',
+                activationBorderColor: '#3b82f6',
+                sequenceNumberColor: '#ffffff'
+            },
+            flowchart: {
+                htmlLabels: true,
+                curve: 'basis',
+                padding: 20,
+                nodeSpacing: 50,
+                rankSpacing: 60,
+                useMaxWidth: false
+            },
+            sequence: {
+                diagramMarginX: 80,
+                diagramMarginY: 40,
+                actorMargin: 100,
+                width: 200,
+                height: 65,
+                boxMargin: 15,
+                boxTextMargin: 8,
+                noteMargin: 20,
+                messageMargin: 50,
+                messageAlign: 'center',
+                mirrorActors: true,
+                bottomMarginAdj: 10,
+                useMaxWidth: false,
+                rightAngles: false,
+                showSequenceNumbers: false,
+                wrap: true,
+                wrapPadding: 15
+            }
+        });
+        
+        const saved = localStorage.getItem('diagram-theme');
+        if (saved) document.body.setAttribute('data-theme', saved);
+        
+        setTimeout(() => { helpTooltip.classList.add('visible'); setTimeout(() => helpTooltip.classList.remove('visible'), 4000); }, 500);
+        setTimeout(fitToScreen, 600);
+    </script>
+</body>
+</html>

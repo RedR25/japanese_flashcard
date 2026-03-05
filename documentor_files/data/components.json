@@ -1,0 +1,124 @@
+[
+  {
+    "file_path": "src\\App.jsx",
+    "language": "javascript",
+    "doc_path": "src/App.jsx.md",
+    "components": [
+      {
+        "type": "arrow_function",
+        "name": "tch (mode) {",
+        "docstring": "",
+        "start_line": 41,
+        "end_line": 48,
+        "parent_class": null,
+        "base_classes": [],
+        "has_docstring": false,
+        "parameters": [
+          " case"
+        ]
+      },
+      {
+        "type": "arrow_function",
+        "name": "s, onSetti",
+        "docstring": "",
+        "start_line": 50,
+        "end_line": 57,
+        "parent_class": null,
+        "base_classes": [],
+        "has_docstring": false,
+        "parameters": [
+          "hang"
+        ]
+      },
+      {
+        "type": "arrow_function",
+        "name": "{\n      onClo",
+        "docstring": "",
+        "start_line": 59,
+        "end_line": 118,
+        "parent_class": null,
+        "base_classes": [],
+        "has_docstring": false,
+        "parameters": []
+      },
+      {
+        "type": "arrow_function",
+        "name": "ex items-center jus",
+        "docstring": "",
+        "start_line": 62,
+        "end_line": 64,
+        "parent_class": null,
+        "base_classes": [],
+        "has_docstring": false,
+        "parameters": [
+          "-ce",
+          "er z-"
+        ]
+      },
+      {
+        "type": "arrow_function",
+        "name": "te rounded-lg p-6 w",
+        "docstring": "",
+        "start_line": 66,
+        "end_line": 70,
+        "parent_class": null,
+        "base_classes": [],
+        "has_docstring": false,
+        "parameters": [
+          "m"
+        ]
+      },
+      {
+        "type": "arrow_function",
+        "name": "\n      on",
+        "docstring": "",
+        "start_line": 120,
+        "end_line": 144,
+        "parent_class": null,
+        "base_classes": [],
+        "has_docstring": false,
+        "parameters": []
+      },
+      {
+        "type": "arrow_function",
+        "name": "div>\n",
+        "docstring": "",
+        "start_line": 146,
+        "end_line": 165,
+        "parent_class": null,
+        "base_classes": [],
+        "has_docstring": false,
+        "parameters": []
+      },
+      {
+        "type": "function",
+        "name": "  const [isFlipped,",
+        "docstring": "",
+        "start_line": 167,
+        "end_line": 353,
+        "parent_class": null,
+        "base_classes": [],
+        "has_docstring": false,
+        "parameters": []
+      },
+      {
+        "type": "arrow_function",
+        "name": "  window.addEv",
+        "docstring": "",
+        "start_line": 237,
+        "end_line": 246,
+        "parent_class": null,
+        "base_classes": [],
+        "has_docstring": false,
+        "parameters": [
+          "i"
+        ]
+      }
+    ],
+    "metadata": {
+      "component_count": 9,
+      "has_classes": false,
+      "has_functions": true
+    }
+  }
+]
