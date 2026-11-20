@@ -2,28 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Single dark theme (landing page design is built around it). */
 :root {
-  --paper: 245 240 230;
-  --card: 255 252 246;
-  --ink: 28 25 23;
-  --muted: 120 113 104;
-  --line: 226 218 204;
-  --seal: 196 52 32;
-  --jade: 22 128 96;
-  color-scheme: light;
+  --paper: 10 10 11;
+  --card: 22 22 25;
+  --ink: 245 245 247;
+  --muted: 150 150 160;
+  --line: 44 44 50;
+  --seal: 255 95 120;
+  --jade: 52 211 153;
+  color-scheme: dark;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --paper: 22 19 15;
-    --card: 34 30 25;
-    --ink: 240 234 222;
-    --muted: 158 149 136;
-    --line: 58 52 44;
-    --seal: 232 92 66;
-    --jade: 64 190 150;
-    color-scheme: dark;
-  }
-}
+
+@keyframes float { 50% { transform: translateY(-10px); } }
+.animate-float { animation: float 6s ease-in-out infinite; }
 
 body { @apply bg-paper text-ink font-sans antialiased; }
 button { -webkit-tap-highlight-color: transparent; }
@@ -37,4 +29,6 @@ button { -webkit-tap-highlight-color: transparent; }
 
 @media (prefers-reduced-motion: reduce) {
   .flip-inner { transition: none; }
+  .animate-float { animation: none; }
+  html { scroll-behavior: auto; }
 }

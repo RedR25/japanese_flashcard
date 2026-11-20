@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowLeftRight, Check, Layers, LayoutGrid, RotateCcw, X } from 'lucide-react';
-import { DECKS, LANGS, getDeck } from './decks';
-import { AccountBar, useAccount } from './account';
+import { LANGS, getDeck } from './decks';
+import { useAccount } from './account';
+import Landing from './Landing';
 
 const load = (k, fallback) => {
   try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fallback; } catch { return fallback; }
@@ -62,7 +63,12 @@ export default function App() {
         <DeckView deck={deck} tab={route[2] === 'browse' ? 'browse' : 'study'} known={known}
           updateKnown={updateKnown} reverse={reverse} toggleReverse={toggleReverse} />
       ) : (
-        <Home known={known} account={account} />
+        <Landing known={known} account={account} />
+      )}
+      {account.notice && (
+        <div role="status" className="fixed inset-x-0 bottom-6 z-50 mx-auto w-fit rounded-full border border-white/10 bg-[#1c1c1f] px-5 py-2.5 text-sm shadow-2xl">
+          {account.notice}
+        </div>
       )}
     </div>
   );
@@ -74,48 +80,6 @@ function Progress({ value, total, className = '' }) {
       aria-valuemin={0} aria-valuemax={total} aria-valuenow={value}>
       <div className="h-full rounded-full bg-jade transition-[width] duration-500" style={{ width: `${total ? (value / total) * 100 : 0}%` }} />
     </div>
-  );
-}
-
-function Home({ known, account }) {
-  return (
-    <main className="mx-auto max-w-4xl px-4 pb-16 pt-10 sm:pt-16">
-      <header className="mb-12 flex flex-wrap items-center justify-between gap-6">
-        <div className="flex items-center gap-4">
-          <div className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-seal font-ja text-xl font-bold text-white shadow-sm" aria-hidden>文字</div>
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Moji</h1>
-            <p className="text-muted">Flashcards for Japanese kana and Chinese radicals</p>
-          </div>
-        </div>
-        <AccountBar account={account} />
-      </header>
-
-      {LANGS.map((lang) => (
-        <section key={lang.id} className="mb-12">
-          <h2 className="mb-4 flex items-baseline gap-3 text-sm font-semibold uppercase tracking-widest text-muted">
-            {lang.label}<span className={`${lang.font} normal-case tracking-normal`} lang={lang.id}>{lang.native}</span>
-          </h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {DECKS.filter((d) => d.lang === lang.id).map((d) => {
-              const learned = d.cards.filter((c) => known.has(c.id)).length;
-              return (
-                <a key={d.id} href={`#/d/${d.id}`}
-                  className="group flex flex-col rounded-2xl border border-line bg-card p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-seal/40 hover:shadow-md">
-                  <span className={`${lang.font} text-4xl font-bold text-ink/90 transition group-hover:text-seal`} lang={htmlLang(d)}>{d.native}</span>
-                  <span className="mt-4 text-lg font-semibold">{d.title}</span>
-                  <span className="mb-5 text-sm text-muted">{d.blurb}</span>
-                  <span className="mt-auto flex items-center gap-3 text-xs tabular-nums text-muted">
-                    <Progress value={learned} total={d.cards.length} />
-                    <span className="shrink-0">{learned}/{d.cards.length}</span>
-                  </span>
-                </a>
-              );
-            })}
-          </div>
-        </section>
-      ))}
-    </main>
   );
 }
 

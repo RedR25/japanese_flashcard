@@ -82,29 +82,42 @@ app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 app.post('/api/auth/google', async (req, res) => {
   if (!GOOGLE_CLIENT_ID) return res.status(503).json({ error: 'google login not configured' });
-  const { credential } = req.body ?? {};
-  if (typeof credential !== 'string' || credential.length > 4096) return res.status(400).json({ error: 'bad credential' });
+  const { accessToken, mode = 'signin' } = req.body ?? {};
+  if (typeof accessToken !== 'string' || accessToken.length > 4096 || !['signin', 'signup'].includes(mode)) {
+    return res.status(400).json({ error: 'bad request' });
+  }
 
-  let payload;
+  // The custom button uses Google's token flow, so we get an access token, not an ID token.
+  // The aud check is what stops a token minted for some other app being replayed here.
+  let profile;
   try {
-    payload = (await google.verifyIdToken({ idToken: credential, audience: GOOGLE_CLIENT_ID })).getPayload();
+    const info = await google.getTokenInfo(accessToken);
+    if (info.aud !== GOOGLE_CLIENT_ID) throw new Error('wrong audience');
+    const r = await fetch('https://openidconnect.googleapis.com/v1/userinfo', { headers: { authorization: `Bearer ${accessToken}` } });
+    if (!r.ok) throw new Error('userinfo failed');
+    profile = await r.json();
   } catch {
     return res.status(401).json({ error: 'invalid google token' });
   }
-  if (!payload?.sub || !payload.email_verified) return res.status(401).json({ error: 'unverified google account' });
+  if (!profile?.sub || !profile.email || profile.email_verified !== true) return res.status(401).json({ error: 'unverified google account' });
+
+  if (mode === 'signin') {
+    const { rowCount } = await db.query('select 1 from users where google_sub = $1', [profile.sub]);
+    if (!rowCount) return res.status(404).json({ error: 'no_account', email: profile.email });
+  }
 
   const { rows: [user] } = await db.query(
     `insert into users (google_sub, email, name, picture) values ($1, $2, $3, $4)
      on conflict (google_sub) do update set email = excluded.email, name = excluded.name, picture = excluded.picture
-     returning id, email, name, picture`,
-    [payload.sub, payload.email, payload.name ?? null, payload.picture ?? null]);
+     returning id, email, name, picture, (xmax = 0) as created`,
+    [profile.sub, profile.email, profile.name ?? null, profile.picture ?? null]);
 
   const token = crypto.randomBytes(32).toString('base64url');
   await db.query('delete from sessions where expires_at < now()');
   await db.query(`insert into sessions (token_hash, user_id, expires_at) values ($1, $2, now() + make_interval(days => $3))`,
     [sha256(token), user.id, SESSION_DAYS]);
   setCookie(res, token, SESSION_DAYS * 86400);
-  res.json({ user: publicUser(user), known: await knownFor(user.id) });
+  res.json({ user: publicUser(user), known: await knownFor(user.id), created: user.created });
 });
 
 app.post('/api/auth/logout', async (req, res) => {

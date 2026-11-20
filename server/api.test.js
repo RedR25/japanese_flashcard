@@ -25,7 +25,8 @@ test('auth, validation and progress round-trip', async (t) => {
   assert.equal((await fetch(`${API}/api/progress`, { method: 'PUT', headers: { ...cookie, 'content-type': 'text/plain' }, body: '{"known":[]}' })).status, 415, 'non-JSON write rejected');
   assert.equal((await fetch(`${API}/api/progress`, { method: 'PUT', headers: { ...cookie, ...json }, body: '{"known":["<script>"]}' })).status, 400, 'bad card id rejected');
   assert.equal((await fetch(`${API}/api/progress`, { method: 'PUT', headers: { ...cookie, ...json }, body: '{bad json' })).status, 400, 'malformed JSON → 400');
-  assert.equal((await fetch(`${API}/api/auth/google`, { method: 'POST', headers: json, body: '{"credential":"nope"}' })).status, 401, 'fake google token rejected');
+  assert.equal((await fetch(`${API}/api/auth/google`, { method: 'POST', headers: json, body: '{"accessToken":"nope"}' })).status, 401, 'fake google token rejected');
+  assert.equal((await fetch(`${API}/api/auth/google`, { method: 'POST', headers: json, body: '{"accessToken":"x","mode":"admin"}' })).status, 400, 'unknown mode rejected');
 
   const put = await fetch(`${API}/api/progress`, { method: 'PUT', headers: { ...cookie, ...json }, body: JSON.stringify({ known: ['h0', 'r12', 'h0'] }) });
   assert.equal(put.status, 200);

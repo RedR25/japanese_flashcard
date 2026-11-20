@@ -8,6 +8,7 @@ export default {
       colors: { paper: v('paper'), card: v('card'), ink: v('ink'), muted: v('muted'), line: v('line'), seal: v('seal'), jade: v('jade') },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
+        display: ['"Instrument Serif"', 'serif'],
         ja: ['"Noto Serif JP"', 'serif'],
         zh: ['"Noto Serif SC"', 'serif'],
       },
