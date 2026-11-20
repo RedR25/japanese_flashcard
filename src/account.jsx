@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, Cloud, LogOut, X } from 'lucide-react';
+import { Check, Cloud, LogOut, ShieldCheck, X } from 'lucide-react';
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
@@ -25,32 +25,38 @@ const loadGis = () => (gis ??= new Promise((resolve, reject) => {
 // Signed out: progress lives in localStorage only. Signed in: merged with the account, then synced on every change.
 export function useAccount(known, replaceKnown) {
   const [user, setUser] = useState(null);
+  const [ready, setReady] = useState(false);
   const [sync, setSync] = useState('idle'); // idle | saving | saved | error
   const [notice, setNotice] = useState(null);
   const synced = useRef(null);
 
-  const adopt = useCallback((u, remote) => {
-    synced.current = [...remote].sort().join();
-    replaceKnown((local) => new Set([...local, ...remote]));
-    setUser(u);
+  const approved = Boolean(user && (user.status === 'approved' || user.isAdmin));
+
+  const adopt = useCallback((r) => {
+    synced.current = [...r.known].sort().join();
+    replaceKnown((local) => new Set([...local, ...r.known]));
+    setUser({ ...r.user, pendingCount: r.pendingCount });
   }, [replaceKnown]);
 
+  const refresh = useCallback(() => api('/me').then(adopt).catch((e) => { if (e.status === 401) setUser(null); }), [adopt]);
+
   useEffect(() => {
-    api('/me').then((r) => adopt(r.user, r.known)).catch(() => { /* 401 = signed out; no backend = local-only mode */ });
+    // 401 = signed out; no backend = local-only mode
+    api('/me').then(adopt).catch(() => {}).finally(() => setReady(true));
   }, [adopt]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!approved) return;
     const ids = [...known].sort();
     if (ids.join() === synced.current) return;
     setSync('saving');
     const t = setTimeout(() => {
       api('/progress', { known: ids }, 'PUT')
         .then(() => { synced.current = ids.join(); setSync('saved'); })
-        .catch((e) => { setSync('error'); if (e.status === 401) setUser(null); });
+        .catch((e) => { setSync('error'); if (e.status === 401) setUser(null); else if (e.status === 403) refresh(); });
     }, 800);
     return () => clearTimeout(t);
-  }, [known, user]);
+  }, [known, approved, refresh]);
 
   useEffect(() => {
     if (!notice) return;
@@ -61,9 +67,11 @@ export function useAccount(known, replaceKnown) {
   // mode 'signin' 404s (no_account) for unknown Google accounts; 'signup' creates the account, or just signs in if it exists.
   const authenticate = useCallback(async (accessToken, mode) => {
     const r = await api('/auth/google', { accessToken, mode });
-    adopt(r.user, r.known);
+    adopt(r);
     const first = (r.user.name || r.user.email).split(' ')[0];
-    setNotice(r.created ? `Account created. Welcome, ${first}!` : `Welcome back, ${first}`);
+    setNotice(r.user.status === 'approved' ? `Welcome back, ${first}`
+      : r.user.status === 'denied' ? 'Your request wasn’t approved'
+      : r.created ? 'Request sent — you’ll get in once it’s approved' : 'Your request is still pending');
   }, [adopt]);
 
   const signOut = async () => {
@@ -74,7 +82,7 @@ export function useAccount(known, replaceKnown) {
     setNotice('Signed out');
   };
 
-  return { user, sync, notice, authenticate, signOut, enabled: Boolean(CLIENT_ID) };
+  return { ready, user, approved, sync, notice, authenticate, signOut, refresh, enabled: Boolean(CLIENT_ID) };
 }
 
 const GoogleG = () => (
@@ -158,24 +166,24 @@ export function AuthDialog({ mode, setMode, onClose, account }) {
         <div className="relative p-7">
           <button onClick={onClose} className="absolute right-4 top-4 rounded-full p-2 text-muted hover:bg-white/5 hover:text-ink" aria-label="Close"><X size={18} /></button>
           <div className="mb-5 grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-seal to-[#ff9a5c] font-ja text-xl font-bold text-white" aria-hidden>文</div>
-          <h2 id="auth-title" className="text-2xl font-semibold tracking-tight">{signup ? 'Create your account' : 'Welcome back'}</h2>
-          <p className="mt-1.5 text-sm text-muted">{signup ? 'Save your progress and pick up on any device.' : 'Sign in to sync your learned cards.'}</p>
+          <h2 id="auth-title" className="text-2xl font-semibold tracking-tight">{signup ? 'Request access' : 'Welcome back'}</h2>
+          <p className="mt-1.5 text-sm text-muted">{signup ? 'New accounts are approved by the admin.' : 'Sign in to sync your learned cards.'}</p>
 
-          <div className="mt-6 flex rounded-full border border-white/10 bg-white/[0.03] p-1">{tab('signin', 'Sign in')}{tab('signup', 'Sign up')}</div>
+          <div className="mt-6 flex rounded-full border border-white/10 bg-white/[0.03] p-1">{tab('signin', 'Sign in')}{tab('signup', 'Request access')}</div>
 
           {pending && signup ? (
             <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
               <p className="text-sm">No Moji account for <span className="font-medium">{pending.email}</span> yet.</p>
               <button onClick={() => submit(pending.token, 'signup')} disabled={busy}
                 className="mt-3 flex h-11 w-full items-center justify-center rounded-full bg-white text-sm font-semibold text-black transition hover:bg-white/90 disabled:opacity-60">
-                {busy ? <Spinner /> : 'Create account'}
+                {busy ? <Spinner /> : 'Request access'}
               </button>
               <button onClick={google} disabled={busy} className="mt-2 w-full text-xs text-muted hover:text-ink">Use a different Google account</button>
             </div>
           ) : (
             <button onClick={google} disabled={busy}
               className="mt-5 flex h-12 w-full items-center justify-center gap-3 rounded-full bg-white text-sm font-semibold text-black transition hover:bg-white/90 active:scale-[.98] disabled:opacity-60">
-              {busy ? <Spinner /> : <><GoogleG />{signup ? 'Sign up with Google' : 'Sign in with Google'}</>}
+              {busy ? <Spinner /> : <><GoogleG />{signup ? 'Request access with Google' : 'Sign in with Google'}</>}
             </button>
           )}
 
@@ -183,15 +191,15 @@ export function AuthDialog({ mode, setMode, onClose, account }) {
 
           {signup && (
             <ul className="mt-5 space-y-2 text-sm text-muted">
-              {['Progress synced to your account', 'Works across phone and desktop', 'Free, no password to remember'].map((t) => (
+              {['You’ll get in once the admin approves you', 'Progress synced across phone and desktop', 'No password to remember'].map((t) => (
                 <li key={t} className="flex items-center gap-2"><Check size={15} className="shrink-0 text-jade" />{t}</li>
               ))}
             </ul>
           )}
 
           <p className="mt-6 text-center text-xs text-muted/80">
-            {signup ? 'Already have an account? ' : 'New to Moji? '}
-            <button onClick={() => switchTo(signup ? 'signin' : 'signup')} className="font-medium text-ink underline-offset-2 hover:underline">{signup ? 'Sign in' : 'Create one'}</button>
+            {signup ? 'Already approved? ' : 'New to Moji? '}
+            <button onClick={() => switchTo(signup ? 'signin' : 'signup')} className="font-medium text-ink underline-offset-2 hover:underline">{signup ? 'Sign in' : 'Request access'}</button>
           </p>
           <p className="mt-3 text-center text-[11px] leading-relaxed text-muted/60">We store only your email, name, photo and which cards you’ve learned.</p>
         </div>
@@ -205,7 +213,7 @@ const Spinner = () => <span className="h-4 w-4 animate-spin rounded-full border-
 const SYNC_LABEL = { idle: 'Synced', saving: 'Saving…', saved: 'Synced', error: 'Sync failed, retrying on next change' };
 
 export function UserMenu({ account }) {
-  const { name, email, picture } = account.user;
+  const { name, email, picture, status, isAdmin, pendingCount } = account.user;
   return (
     <details className="relative">
       <summary className="flex cursor-pointer list-none items-center gap-2 rounded-full border border-white/10 bg-white/5 py-1 pl-1 pr-3 text-sm hover:bg-white/10 [&::-webkit-details-marker]:hidden">
@@ -219,9 +227,19 @@ export function UserMenu({ account }) {
           <div className="truncate text-sm font-medium">{name || email}</div>
           <div className="truncate text-xs text-muted">{email}</div>
         </div>
-        <div className={`flex items-center gap-2 px-3 pb-2 text-xs ${account.sync === 'error' ? 'text-seal' : 'text-muted'}`}>
-          <Cloud size={13} />{SYNC_LABEL[account.sync]}
-        </div>
+        {account.approved ? (
+          <div className={`flex items-center gap-2 px-3 pb-2 text-xs ${account.sync === 'error' ? 'text-seal' : 'text-muted'}`}>
+            <Cloud size={13} />{SYNC_LABEL[account.sync]}
+          </div>
+        ) : (
+          <div className={`px-3 pb-2 text-xs ${status === 'denied' ? 'text-seal' : 'text-muted'}`}>{status === 'denied' ? 'Not approved' : 'Pending approval'}</div>
+        )}
+        {isAdmin && (
+          <a href="#/admin" className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-muted hover:bg-white/5 hover:text-ink">
+            <ShieldCheck size={15} />Manage access
+            {pendingCount > 0 && <span className="ml-auto rounded-full bg-seal px-1.5 text-[11px] font-semibold text-white">{pendingCount}</span>}
+          </a>
+        )}
         <button onClick={account.signOut} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-muted hover:bg-white/5 hover:text-ink">
           <LogOut size={15} />Sign out
         </button>

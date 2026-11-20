@@ -4,7 +4,7 @@ import express from 'express';
 import pg from 'pg';
 import { OAuth2Client } from 'google-auth-library';
 
-const { DATABASE_URL, GOOGLE_CLIENT_ID, PORT = 3000, NODE_ENV } = process.env;
+const { DATABASE_URL, GOOGLE_CLIENT_ID, ADMIN_EMAILS = '', PORT = 3000, NODE_ENV } = process.env;
 if (!DATABASE_URL) throw new Error('DATABASE_URL is required');
 
 const db = new pg.Pool({ connectionString: DATABASE_URL });
@@ -13,6 +13,10 @@ const COOKIE = 'moji_session';
 const SESSION_DAYS = 30;
 const CARD_ID = /^[a-z][a-z0-9-]{0,31}$/;
 const MAX_CARDS = 5000;
+const ADMINS = new Set(ADMIN_EMAILS.split(',').map((e) => e.trim().toLowerCase()).filter(Boolean));
+const isAdmin = (email) => ADMINS.has(email.toLowerCase());
+const approved = (u) => u.status === 'approved' || isAdmin(u.email);
+const STATUSES = ['pending', 'approved', 'denied'];
 
 await db.query(`
   create table if not exists users (
@@ -23,6 +27,8 @@ await db.query(`
     picture text,
     created_at timestamptz not null default now()
   );
+  alter table users add column if not exists status text not null default 'pending'
+    check (status in ('pending', 'approved', 'denied'));
   create table if not exists sessions (
     token_hash text primary key,
     user_id bigint not null references users(id) on delete cascade,
@@ -66,7 +72,7 @@ const auth = async (req, res, next) => {
   const token = readToken(req);
   if (!token) return res.status(401).json({ error: 'unauthenticated' });
   const { rows } = await db.query(
-    `select u.id, u.email, u.name, u.picture from sessions s join users u on u.id = s.user_id
+    `select u.id, u.email, u.name, u.picture, u.status from sessions s join users u on u.id = s.user_id
      where s.token_hash = $1 and s.expires_at > now()`, [sha256(token)]);
   if (!rows[0]) return res.status(401).json({ error: 'unauthenticated' });
   req.user = rows[0];
@@ -76,7 +82,9 @@ const auth = async (req, res, next) => {
 const knownFor = async (userId) =>
   (await db.query('select known from progress where user_id = $1', [userId])).rows[0]?.known ?? [];
 
-const publicUser = ({ email, name, picture }) => ({ email, name, picture });
+const publicUser = (u) => ({ email: u.email, name: u.name, picture: u.picture, status: approved(u) ? 'approved' : u.status, isAdmin: isAdmin(u.email) });
+
+const admin = (req, res, next) => (isAdmin(req.user.email) ? next() : res.status(403).json({ error: 'forbidden' }));
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
@@ -107,17 +115,18 @@ app.post('/api/auth/google', async (req, res) => {
   }
 
   const { rows: [user] } = await db.query(
-    `insert into users (google_sub, email, name, picture) values ($1, $2, $3, $4)
-     on conflict (google_sub) do update set email = excluded.email, name = excluded.name, picture = excluded.picture
-     returning id, email, name, picture, (xmax = 0) as created`,
-    [profile.sub, profile.email, profile.name ?? null, profile.picture ?? null]);
+    `insert into users (google_sub, email, name, picture, status) values ($1, $2, $3, $4, case when $5 then 'approved' else 'pending' end)
+     on conflict (google_sub) do update set email = excluded.email, name = excluded.name, picture = excluded.picture,
+       status = case when $5 then 'approved' else users.status end
+     returning id, email, name, picture, status, (xmax = 0) as created`,
+    [profile.sub, profile.email, profile.name ?? null, profile.picture ?? null, isAdmin(profile.email)]);
 
   const token = crypto.randomBytes(32).toString('base64url');
   await db.query('delete from sessions where expires_at < now()');
   await db.query(`insert into sessions (token_hash, user_id, expires_at) values ($1, $2, now() + make_interval(days => $3))`,
     [sha256(token), user.id, SESSION_DAYS]);
   setCookie(res, token, SESSION_DAYS * 86400);
-  res.json({ user: publicUser(user), known: await knownFor(user.id), created: user.created });
+  res.json({ user: publicUser(user), known: approved(user) ? await knownFor(user.id) : [], created: user.created });
 });
 
 app.post('/api/auth/logout', async (req, res) => {
@@ -128,10 +137,14 @@ app.post('/api/auth/logout', async (req, res) => {
 });
 
 app.get('/api/me', auth, async (req, res) => {
-  res.json({ user: publicUser(req.user), known: await knownFor(req.user.id) });
+  const u = publicUser(req.user);
+  const out = { user: u, known: u.status === 'approved' ? await knownFor(req.user.id) : [] };
+  if (u.isAdmin) out.pendingCount = (await db.query("select count(*)::int n from users where status = 'pending' and lower(email) <> all($1)", [[...ADMINS]])).rows[0].n;
+  res.json(out);
 });
 
 app.put('/api/progress', auth, async (req, res) => {
+  if (!approved(req.user)) return res.status(403).json({ error: 'not_approved' });
   const { known } = req.body ?? {};
   if (!validKnown(known)) return res.status(400).json({ error: 'invalid progress' });
   await db.query(
@@ -139,6 +152,21 @@ app.put('/api/progress', auth, async (req, res) => {
      on conflict (user_id) do update set known = excluded.known, updated_at = now()`,
     [req.user.id, [...new Set(known)]]);
   res.json({ ok: true });
+});
+
+app.get('/api/admin/users', auth, admin, async (_req, res) => {
+  const { rows } = await db.query(
+    `select id, email, name, picture, status, created_at from users order by (status = 'pending') desc, created_at desc`);
+  res.json({ users: rows });
+});
+
+app.patch('/api/admin/users/:id', auth, admin, async (req, res) => {
+  const { status } = req.body ?? {};
+  if (!/^[1-9]\d{0,17}$/.test(req.params.id) || !STATUSES.includes(status)) return res.status(400).json({ error: 'bad request' });
+  const { rows } = await db.query(
+    'update users set status = $1 where id = $2 returning id, email, name, picture, status, created_at', [status, req.params.id]);
+  if (!rows[0]) return res.status(404).json({ error: 'not found' });
+  res.json({ user: rows[0] });
 });
 
 // Express 5 forwards async errors here. Never leak internals. (4-arg signature is how Express recognises it.)

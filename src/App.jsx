@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowLeftRight, Check, Layers, LayoutGrid, RotateCcw, X } from 'lucide-react';
+import { ArrowLeft, ArrowLeftRight, Check, Layers, LayoutGrid, Lock, Rocket, RotateCcw, X } from 'lucide-react';
 import { LANGS, getDeck } from './decks';
-import { useAccount } from './account';
+import { AuthDialog, useAccount } from './account';
 import Landing from './Landing';
+import Asteroids from './Asteroids';
+import Admin from './Admin';
 
 const load = (k, fallback) => {
   try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fallback; } catch { return fallback; }
@@ -56,15 +58,26 @@ export default function App() {
 
   const toggleReverse = () => setReverse((r) => { save('moji.reverse', !r); return !r; });
 
+  const [auth, setAuth] = useState(null); // sign-in modal: null | 'signin' | 'signup'
   const deck = route[0] === 'd' && getDeck(route[1]);
+  const play = route[0] === 'play';
+  const admin = route[0] === 'admin';
+  // Whitelist: everything but the landing page needs an approved account. No client ID (local dev) = open.
+  const locked = (deck || play || admin) && account.enabled && !account.approved;
+
+  let page;
+  if (locked) page = <Gate account={account} openAuth={setAuth} />;
+  else if (admin) page = <Admin account={account} />;
+  else if (play) page = <Asteroids key={route[1] || ''} initialDeck={getDeck(route[1])?.id} />;
+  else if (deck) {
+    page = <DeckView deck={deck} tab={route[2] === 'browse' ? 'browse' : 'study'} known={known}
+      updateKnown={updateKnown} reverse={reverse} toggleReverse={toggleReverse} />;
+  } else page = <Landing known={known} account={account} openAuth={setAuth} />;
+
   return (
     <div className="min-h-screen">
-      {deck ? (
-        <DeckView deck={deck} tab={route[2] === 'browse' ? 'browse' : 'study'} known={known}
-          updateKnown={updateKnown} reverse={reverse} toggleReverse={toggleReverse} />
-      ) : (
-        <Landing known={known} account={account} />
-      )}
+      {page}
+      {account.enabled && <AuthDialog mode={auth} setMode={setAuth} onClose={() => setAuth(null)} account={account} />}
       {account.notice && (
         <div role="status" className="fixed inset-x-0 bottom-6 z-50 mx-auto w-fit rounded-full border border-white/10 bg-[#1c1c1f] px-5 py-2.5 text-sm shadow-2xl">
           {account.notice}
@@ -80,6 +93,31 @@ function Progress({ value, total, className = '' }) {
       aria-valuemin={0} aria-valuemax={total} aria-valuenow={value}>
       <div className="h-full rounded-full bg-jade transition-[width] duration-500" style={{ width: `${total ? (value / total) * 100 : 0}%` }} />
     </div>
+  );
+}
+
+function Gate({ account, openAuth }) {
+  const { ready, user } = account;
+  if (!ready) {
+    return <main className="grid min-h-screen place-items-center"><span className="h-6 w-6 animate-spin rounded-full border-2 border-white/20 border-t-white" aria-label="Loading" /></main>;
+  }
+  const primary = 'rounded-full bg-white px-6 py-3 text-sm font-semibold text-black transition hover:bg-white/90';
+  const secondary = 'rounded-full border border-white/15 px-6 py-3 text-sm font-semibold transition hover:bg-white/5';
+  const [title, body, actions] = !user
+    ? ['Members only', 'Moji is invite-only. Sign in, or request access and the admin will let you in.',
+      <><button onClick={() => openAuth('signin')} className={primary}>Sign in</button><button onClick={() => openAuth('signup')} className={secondary}>Request access</button></>]
+    : user.status === 'denied'
+      ? ['Access not approved', `${user.email} wasn’t approved for Moji.`, <button onClick={account.signOut} className={secondary}>Sign out</button>]
+      : ['Request pending', `You’ll get in as soon as the admin approves ${user.email}.`,
+        <><button onClick={account.refresh} className={primary}>Check again</button><button onClick={account.signOut} className={secondary}>Sign out</button></>];
+  return (
+    <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center px-6 text-center">
+      <span className="grid h-14 w-14 place-items-center rounded-2xl bg-white/[0.06]"><Lock size={22} /></span>
+      <h1 className="mt-5 text-2xl font-semibold tracking-tight">{title}</h1>
+      <p className="mt-2 text-muted">{body}</p>
+      <div className="mt-8 flex flex-wrap justify-center gap-3">{actions}</div>
+      <a href="#/" className="mt-6 text-sm text-muted hover:text-ink">Back to home</a>
+    </main>
   );
 }
 
@@ -101,6 +139,7 @@ function DeckView({ deck, tab, known, updateKnown, reverse, toggleReverse }) {
         <nav className="flex rounded-xl bg-line/60 p-1">
           <a href={`#/d/${deck.id}`} className={tabClass('study')}><Layers size={15} />Study</a>
           <a href={`#/d/${deck.id}/browse`} className={tabClass('browse')}><LayoutGrid size={15} />Browse</a>
+          <a href={`#/play/${deck.id}`} className={tabClass('play')}><Rocket size={15} />Play</a>
         </nav>
       </header>
 

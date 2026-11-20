@@ -1,7 +1,6 @@
-import { useState } from 'react';
 import { ArrowRight, Cloud, Layers, MousePointer2, Repeat } from 'lucide-react';
 import { DECKS, LANGS } from './decks';
-import { AuthDialog, UserMenu } from './account';
+import { UserMenu } from './account';
 
 // Per-deck look for the landing page. Fan order is left → right; `lift` drops the outer cards.
 const LOOK = {
@@ -16,8 +15,7 @@ const langAttr = (deck) => (deck.lang === 'zh' ? 'zh-Hans' : deck.lang);
 const learnedIn = (deck, known) => deck.cards.filter((c) => known.has(c.id)).length;
 const scrollTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
 
-export default function Landing({ known, account }) {
-  const [auth, setAuth] = useState(null); // null | 'signin' | 'signup'
+export default function Landing({ known, account, openAuth: setAuth }) {
   const total = new Set(DECKS.flatMap((d) => d.cards.map((c) => c.id))).size;
 
   return (
@@ -36,12 +34,13 @@ export default function Landing({ known, account }) {
             {[['decks', 'Decks'], ['how', 'How it works']].map(([id, label]) => (
               <button key={id} onClick={() => scrollTo(id)} className="rounded-full px-4 py-1.5 text-muted transition hover:text-ink">{label}</button>
             ))}
+            <a href="#/play" className="rounded-full px-4 py-1.5 text-muted transition hover:text-ink">Asteroids</a>
           </nav>
           <div className="flex items-center gap-2">
             {account.user ? <UserMenu account={account} /> : account.enabled && (
               <>
                 <button onClick={() => setAuth('signin')} className="rounded-full px-4 py-2 text-sm font-medium text-ink/90 transition hover:bg-white/5">Sign in</button>
-                <button onClick={() => setAuth('signup')} className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-black transition hover:bg-white/90">Sign up</button>
+                <button onClick={() => setAuth('signup')} className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-black transition hover:bg-white/90">Request access</button>
               </>
             )}
           </div>
@@ -90,6 +89,25 @@ export default function Landing({ known, account }) {
         ))}
       </section>
 
+      <section className="mx-auto max-w-6xl px-4 pt-12 sm:px-6">
+        <a href="#/play" className="group flex flex-col gap-8 overflow-hidden rounded-[28px] border border-white/10 bg-gradient-to-br from-[#5b7cff]/20 via-transparent to-[#a77bff]/10 p-8 transition hover:border-white/20 sm:flex-row sm:items-center sm:p-10">
+          <div className="flex-1">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8ea2ff]">New game</p>
+            <h2 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Asteroid Shooter</h2>
+            <p className="mt-2 max-w-md text-muted">Characters rain down as asteroids. Type the reading, or the character itself, to blast them before they land.</p>
+            <span className="mt-6 inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-black">Play now<ArrowRight size={16} className="transition group-hover:translate-x-0.5" /></span>
+          </div>
+          <div aria-hidden className="relative h-40 sm:w-72">
+            {[['か', 'left-[8%] top-[10%] h-16 w-16', 'animate-float'], ['人', 'left-[52%] top-0 h-20 w-20', 'animate-float [animation-delay:-2s]'], ['ア', 'left-[30%] top-[58%] h-14 w-14', 'animate-float [animation-delay:-4s]']].map(([c, pos, anim]) => (
+              <span key={c} className={`absolute grid place-items-center ${pos} ${anim}`}>
+                <span className="rock absolute inset-0 rounded-[46%_54%_52%_48%/55%_45%_55%_45%]" />
+                <span className="relative font-ja text-2xl font-bold">{c}</span>
+              </span>
+            ))}
+          </div>
+        </a>
+      </section>
+
       <section id="how" className="mx-auto max-w-6xl scroll-mt-6 px-4 py-20 sm:px-6">
         <SectionTitle kicker="How it works" title="Three keys, zero friction" />
         <div className="mt-10 grid gap-4 md:grid-cols-3">
@@ -99,16 +117,15 @@ export default function Landing({ known, account }) {
         </div>
         {!account.user && account.enabled && (
           <div className="mt-12 flex flex-col items-center gap-4 rounded-[28px] border border-white/10 bg-gradient-to-b from-white/[0.06] to-transparent px-6 py-12 text-center">
-            <h3 className="text-2xl font-semibold tracking-tight sm:text-3xl">Keep your progress on every device</h3>
-            <p className="max-w-md text-muted">Free account. One click with Google, no password.</p>
-            <button onClick={() => setAuth('signup')} className="mt-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-black transition hover:bg-white/90">Create free account</button>
+            <h3 className="text-2xl font-semibold tracking-tight sm:text-3xl">Moji is invite-only</h3>
+            <p className="max-w-md text-muted">Request access with your Google account. Once the admin approves you, your progress syncs to every device.</p>
+            <button onClick={() => setAuth('signup')} className="mt-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-black transition hover:bg-white/90">Request access</button>
           </div>
         )}
       </section>
 
       <footer className="border-t border-white/5 py-8 text-center text-xs text-muted">Moji · 文字 · Kana & Hanzi flashcards</footer>
 
-      {account.enabled && <AuthDialog mode={auth} setMode={setAuth} onClose={() => setAuth(null)} account={account} />}
     </>
   );
 }
