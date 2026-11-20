@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowLeftRight, Check, Layers, LayoutGrid, RotateCcw, X } from 'lucide-react';
 import { DECKS, LANGS, getDeck } from './decks';
+import { AccountBar, useAccount } from './account';
 
 const load = (k, fallback) => {
   try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fallback; } catch { return fallback; }
@@ -45,6 +46,13 @@ export default function App() {
     return next;
   }), []);
 
+  const replaceKnown = useCallback((fn) => setKnown((prev) => {
+    const next = fn(prev);
+    save('moji.known', [...next]);
+    return next;
+  }), []);
+  const account = useAccount(known, replaceKnown);
+
   const toggleReverse = () => setReverse((r) => { save('moji.reverse', !r); return !r; });
 
   const deck = route[0] === 'd' && getDeck(route[1]);
@@ -54,7 +62,7 @@ export default function App() {
         <DeckView deck={deck} tab={route[2] === 'browse' ? 'browse' : 'study'} known={known}
           updateKnown={updateKnown} reverse={reverse} toggleReverse={toggleReverse} />
       ) : (
-        <Home known={known} />
+        <Home known={known} account={account} />
       )}
     </div>
   );
@@ -69,15 +77,18 @@ function Progress({ value, total, className = '' }) {
   );
 }
 
-function Home({ known }) {
+function Home({ known, account }) {
   return (
     <main className="mx-auto max-w-4xl px-4 pb-16 pt-10 sm:pt-16">
-      <header className="mb-12 flex items-center gap-4">
-        <div className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-seal font-ja text-2xl font-bold text-white shadow-sm" aria-hidden>文字</div>
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Moji</h1>
-          <p className="text-muted">Flashcards for Japanese kana and Chinese radicals</p>
+      <header className="mb-12 flex flex-wrap items-center justify-between gap-6">
+        <div className="flex items-center gap-4">
+          <div className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-seal font-ja text-xl font-bold text-white shadow-sm" aria-hidden>文字</div>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Moji</h1>
+            <p className="text-muted">Flashcards for Japanese kana and Chinese radicals</p>
+          </div>
         </div>
+        <AccountBar account={account} />
       </header>
 
       {LANGS.map((lang) => (
