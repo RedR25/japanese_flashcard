@@ -109,7 +109,7 @@ app.post('/api/auth/google', async (req, res) => {
   }
   if (!profile?.sub || !profile.email || profile.email_verified !== true) return res.status(401).json({ error: 'unverified google account' });
 
-  if (mode === 'signin') {
+  if (mode === 'signin' && !isAdmin(profile.email)) { // admins never need to request access
     const { rowCount } = await db.query('select 1 from users where google_sub = $1', [profile.sub]);
     if (!rowCount) return res.status(404).json({ error: 'no_account', email: profile.email });
   }
