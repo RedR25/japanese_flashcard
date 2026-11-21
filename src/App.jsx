@@ -6,6 +6,7 @@ import Landing from './Landing';
 import Asteroids from './Asteroids';
 import Admin from './Admin';
 import Dashboard, { Emblem, Panel, Shell } from './Dashboard';
+import { browseLesson, studyLesson } from './lesson';
 
 const load = (k, fallback) => {
   try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fallback; } catch { return fallback; }
@@ -57,6 +58,7 @@ export default function App() {
   const toggleReverse = () => setReverse((r) => { save('moji.reverse', !r); return !r; });
 
   const [auth, setAuth] = useState(null); // sign-in modal: null | 'signin' | 'signup'
+  const [lesson, setLesson] = useState(null); // the open card or deck as text, for the study helper (lesson.js)
   const deck = route[0] === 'd' && getDeck(route[1]);
   const play = route[0] === 'play';
   const admin = route[0] === 'admin';
@@ -71,11 +73,11 @@ export default function App() {
     page = deck || play || admin ? <Gate account={account} openAuth={setAuth} /> : <Landing known={known} account={account} openAuth={setAuth} />;
   } else {
     page = (
-      <Shell here={deck ? deck.id : play ? 'play' : admin ? 'admin' : 'home'} account={account} known={known}>
+      <Shell here={deck ? deck.id : play ? 'play' : admin ? 'admin' : 'home'} account={account} known={known} lesson={lesson}>
         {admin ? <Admin account={account} />
           : play ? <Asteroids key={route[1] || ''} initialDeck={getDeck(route[1])?.id} />
           : deck ? <DeckView deck={deck} tab={route[2] === 'browse' ? 'browse' : 'study'} known={known}
-            updateKnown={updateKnown} reverse={reverse} toggleReverse={toggleReverse} />
+            updateKnown={updateKnown} reverse={reverse} toggleReverse={toggleReverse} setLesson={setLesson} />
           : <Dashboard known={known} account={account} last={getDeck(load('moji.last', null)) || DECKS[0]} />}
       </Shell>
     );
@@ -182,7 +184,7 @@ function Gate({ account, openAuth }) {
   );
 }
 
-function DeckView({ deck, tab, known, updateKnown, reverse, toggleReverse }) {
+function DeckView({ deck, tab, known, updateKnown, reverse, toggleReverse, setLesson }) {
   const font = fontOf(deck);
   const learned = deck.cards.filter((c) => known.has(c.id)).length;
   const tabClass = (t) => `flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition ${tab === t ? 'bg-card text-ink shadow-sm' : 'text-muted hover:text-ink'}`;
@@ -205,15 +207,15 @@ function DeckView({ deck, tab, known, updateKnown, reverse, toggleReverse }) {
       </header>
 
       {tab === 'study' ? (
-        <Study key={`${deck.id}-${reverse}`} deck={deck} font={font} reverse={reverse} toggleReverse={toggleReverse} known={known} updateKnown={updateKnown} />
+        <Study key={`${deck.id}-${reverse}`} deck={deck} font={font} reverse={reverse} toggleReverse={toggleReverse} known={known} updateKnown={updateKnown} setLesson={setLesson} />
       ) : (
-        <Browse deck={deck} font={font} known={known} updateKnown={updateKnown} />
+        <Browse deck={deck} font={font} known={known} updateKnown={updateKnown} setLesson={setLesson} />
       )}
     </>
   );
 }
 
-function Study({ deck, font, reverse, toggleReverse, known, updateKnown }) {
+function Study({ deck, font, reverse, toggleReverse, known, updateKnown, setLesson }) {
   const [unlearnedOnly, setUnlearnedOnly] = useState(false);
   const [queue, setQueue] = useState(() => shuffle(deck.cards));
   const [total, setTotal] = useState(deck.cards.length);
@@ -227,6 +229,11 @@ function Study({ deck, font, reverse, toggleReverse, known, updateKnown }) {
   };
 
   const card = queue[0];
+  useEffect(() => {
+    setLesson(card ? studyLesson(deck, card, { reverse, flipped }) : null);
+    return () => setLesson(null);
+  }, [deck, card, reverse, flipped, setLesson]);
+
   const answer = useCallback((ok) => {
     if (!card) return;
     updateKnown((s) => (ok ? s.add(card.id) : s.delete(card.id)));
@@ -243,9 +250,9 @@ function Study({ deck, font, reverse, toggleReverse, known, updateKnown }) {
 
   const keys = useRef();
   keys.current = (e) => {
-    // Typing in the lookup or chat box isn't a shortcut, and Enter on a link or button keeps its normal job.
-    if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest('input, textarea, select')) return;
-    if (e.code === 'Space' || (e.key === 'Enter' && !e.target.closest('a, button'))) { e.preventDefault(); if (card) setFlipped((f) => !f); }
+    // Typing in the lookup or anything in the chat panel isn't a shortcut, and Space/Enter on a link or button keep their normal job.
+    if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest('input, textarea, select, [role="dialog"]')) return;
+    if ((e.code === 'Space' || e.key === 'Enter') && !e.target.closest('a, button')) { e.preventDefault(); if (card) setFlipped((f) => !f); }
     else if (flipped && (e.key === '1' || e.key === 'ArrowLeft')) answer(false);
     else if (flipped && (e.key === '2' || e.key === 'ArrowRight')) answer(true);
   };
@@ -365,9 +372,13 @@ function Flashcard({ card, deck, font, reverse, flipped, onFlip }) {
   );
 }
 
-function Browse({ deck, font, known, updateKnown }) {
+function Browse({ deck, font, known, updateKnown, setLesson }) {
   const rich = Boolean(deck.cards[0]?.answerSub);
   const learned = deck.cards.filter((c) => known.has(c.id)).length;
+  useEffect(() => {
+    setLesson(browseLesson(deck, known));
+    return () => setLesson(null);
+  }, [deck, known, setLesson]);
   return (
     <>
       <div className="mb-4 flex items-center justify-between text-xs text-muted">

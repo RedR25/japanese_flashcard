@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowUp, MessageCircle, X } from 'lucide-react';
+import { ArrowUp, Eye, EyeOff, MessageCircle, X } from 'lucide-react';
 
 // Floating study helper. The browser only talks to /api/chat; the OpenRouter key and system prompt live on the server.
+// With a lesson open it also sends that card or deck as text (lesson.js); the chip above the input switches that off.
 const HELLO = 'Hi! Ask me about kana, radicals, readings or example words. For example: “How do I tell シ and ツ apart?”';
 const ERRORS = {
   413: 'This chat got too long. Clear it and ask again.',
@@ -15,12 +16,13 @@ const Bubble = ({ mine, children }) => (
   </div>
 );
 
-export default function Chat() {
+export default function Chat({ lesson }) {
   const [open, setOpen] = useState(false);
   const [msgs, setMsgs] = useState([]); // [{ role: 'user' | 'assistant', content }]
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [share, setShare] = useState(true); // let the helper see the open lesson
   const list = useRef(null);
   const input = useRef(null);
 
@@ -37,7 +39,7 @@ export default function Chat() {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ messages: next.slice(-8) }), // recent turns are enough context, and keep the request small
+        body: JSON.stringify({ messages: next.slice(-8), screen: share ? lesson?.text : undefined }), // recent turns are enough context, and keep the request small
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.reply) throw Object.assign(new Error('chat failed'), { status: res.status });
@@ -79,6 +81,14 @@ export default function Chat() {
           </div>
 
           {error && <p role="alert" className="mx-4 mb-2 rounded-xl bg-seal/10 px-3 py-2 text-xs text-seal">{error}</p>}
+          {lesson && (
+            <button type="button" onClick={() => setShare((s) => !s)} aria-pressed={share} aria-label={`Let the helper see this lesson: ${lesson.label}`}
+              title={share ? 'Click to hide this lesson from the helper' : 'Click to let the helper see this lesson'}
+              className={`mx-3 mb-2 flex max-w-[calc(100%-1.5rem)] items-center gap-1.5 self-start rounded-full border px-2.5 py-1 text-xs transition ${share ? 'border-jade/30 bg-jade/10 text-jade hover:bg-jade/15' : 'border-white/10 text-muted hover:text-ink'}`}>
+              {share ? <Eye size={13} className="shrink-0" /> : <EyeOff size={13} className="shrink-0" />}
+              <span className="truncate">{share ? `Sees ${lesson.label}` : 'Can’t see your lesson'}</span>
+            </button>
+          )}
           <form onSubmit={send} className="flex items-end gap-2 border-t border-white/[0.06] p-3">
             <textarea ref={input} value={text} onChange={(e) => setText(e.target.value)} rows={1} maxLength={2000}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) send(e); }}

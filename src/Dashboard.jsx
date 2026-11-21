@@ -35,7 +35,7 @@ export const Panel = ({ title, className = '', style, children }) => (
 );
 
 // Frame for every signed-in page: sidebar (a scrolling strip on phones), top bar with lookup + account, then the page.
-export function Shell({ here, account, known, children }) {
+export function Shell({ here, account, known, lesson, children }) {
   const { user } = account;
   const link = (href, id, label, lead, tail) => (
     <a key={id} href={href} aria-current={here === id ? 'page' : undefined}
@@ -71,7 +71,7 @@ export function Shell({ here, account, known, children }) {
 
         <main className="px-4 pb-24 pt-5 sm:px-6 lg:col-start-2 lg:row-start-2 lg:mx-auto lg:w-full lg:max-w-6xl lg:px-8 lg:pt-0">{children}</main>
       </div>
-      <Chat />
+      <Chat lesson={lesson} />
     </>
   );
 }

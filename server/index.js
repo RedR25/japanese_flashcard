@@ -176,17 +176,21 @@ const chatTimes = new Map(); // user id → recent request times. ponytail: per-
 const validChat = (m) => Array.isArray(m) && m.length >= 1 && m.length <= 20
   && m.every((x) => ['user', 'assistant'].includes(x?.role) && typeof x.content === 'string' && x.content.trim())
   && m.at(-1).role === 'user' && m.at(-1).content.length <= 2000;
+const validScreen = (s) => s === undefined || (typeof s === 'string' && s.length <= 4000); // the open lesson as text (src/lesson.js)
 
 app.post('/api/chat', auth, async (req, res) => {
   if (!approved(req.user)) return res.status(403).json({ error: 'not_approved' });
-  const { messages } = req.body ?? {};
-  if (!validChat(messages)) return res.status(400).json({ error: 'bad request' });
+  const { messages, screen } = req.body ?? {};
+  if (!validChat(messages) || !validScreen(screen)) return res.status(400).json({ error: 'bad request' });
   if (!OPENROUTER_API_KEY || !CHAT_SYSTEM_PROMPT) return res.status(503).json({ error: 'chat not configured' }); // no prompt = no guardrails, so don't answer
   const now = Date.now();
   const recent = (chatTimes.get(req.user.id) ?? []).filter((t) => now - t < 60_000);
   if (recent.length >= CHAT_PER_MINUTE) return res.status(429).json({ error: 'slow down' });
   chatTimes.set(req.user.id, [...recent, now]);
 
+  const turns = messages.map(({ role, content }) => ({ role, content: content.slice(0, 4000) }));
+  // The open lesson rides on the latest question inside the user's turn, so it can never act as a system instruction.
+  if (screen) turns.at(-1).content = `[Lesson screen]\n${screen}\n[/Lesson screen]\n\n${turns.at(-1).content}`;
   let r;
   try {
     r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -194,7 +198,7 @@ app.post('/api/chat', auth, async (req, res) => {
       headers: { authorization: `Bearer ${OPENROUTER_API_KEY}`, 'content-type': 'application/json' },
       body: JSON.stringify({
         model: OPENROUTER_MODEL,
-        messages: [{ role: 'system', content: CHAT_SYSTEM_PROMPT }, ...messages.map(({ role, content }) => ({ role, content: content.slice(0, 4000) }))],
+        messages: [{ role: 'system', content: CHAT_SYSTEM_PROMPT }, ...turns],
         max_tokens: 1500,
         temperature: 0.3,
         reasoning: { effort: 'low', exclude: true }, // a reasoning model: keep the thinking short and out of the reply
