@@ -1,6 +1,6 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
 import { ArrowLeft, Heart, Pause, Rocket } from 'lucide-react';
-import { DECKS, fontOf, getDeck, langAttr } from './decks';
+import { DECKS, READINGS, fontOf, getDeck, langAttr, withReading } from './decks';
 import { acceptFor, norm, pickTarget } from './asteroids-logic.js';
 
 // Typing game: asteroids carry a prompt; type its match to shoot it before it reaches the ground.
@@ -23,7 +23,7 @@ const store = {
 };
 const bestKey = (deckId, dir) => `moji.astro.best.${deckId}.${dir}`;
 
-export default function Asteroids({ initialDeck }) {
+export default function Asteroids({ initialDeck, reading, setReading }) {
   const [setup, setSetup] = useState(() => {
     const saved = store.get('moji.astro.setup', {});
     return { deck: initialDeck || (getDeck(saved.deck) ? saved.deck : 'hiragana'), dir: saved.dir === 'reverse' ? 'reverse' : 'forward' };
@@ -31,9 +31,9 @@ export default function Asteroids({ initialDeck }) {
   const [phase, setPhase] = useState('setup'); // setup | play | over
   const [round, setRound] = useState(0);
   const [result, setResult] = useState(null);
-  const deck = getDeck(setup.deck);
+  const deck = withReading(getDeck(setup.deck), reading);
 
-  const start = () => { store.set('moji.astro.setup', setup); setRound((r) => r + 1); setPhase('play'); };
+  const start =() => { store.set('moji.astro.setup', setup); setRound((r) => r + 1); setPhase('play'); };
   const end = (r) => {
     const best = store.get(bestKey(setup.deck, setup.dir), 0);
     if (r.score > best) store.set(bestKey(setup.deck, setup.dir), r.score);
@@ -43,11 +43,12 @@ export default function Asteroids({ initialDeck }) {
 
   if (phase === 'play') return <Game key={round} deck={deck} dir={setup.dir} onEnd={end} onQuit={() => setPhase('setup')} />;
   if (phase === 'over') return <Over result={result} deck={deck} dir={setup.dir} onAgain={start} onSetup={() => setPhase('setup')} />;
-  return <Setup setup={setup} setSetup={setSetup} onStart={start} />;
+  return <Setup setup={setup} setSetup={setSetup} reading={reading} setReading={setReading} onStart={start} />;
 }
 
-function Setup({ setup, setSetup, onStart }) {
-  const deck = getDeck(setup.deck);
+function Setup({ setup, setSetup, reading, setReading, onStart }) {
+  const base = getDeck(setup.deck);
+  const deck = withReading(base, reading);
   const sample = deck.cards[0];
   const best = store.get(bestKey(setup.deck, setup.dir), 0);
   const opt = (active) => `rounded-2xl border p-4 text-left transition ${active ? 'border-seal bg-seal/10' : 'border-white/10 bg-white/[0.03] hover:border-white/25'}`;
@@ -74,11 +75,25 @@ function Setup({ setup, setSetup, onStart }) {
         ))}
       </div>
 
+      {base.pinyinCards && (
+        <>
+          <h2 className="mb-3 mt-8 text-xs font-semibold uppercase tracking-[0.18em] text-muted">Reading</h2>
+          <div className="grid grid-cols-2 gap-3">
+            {READINGS.map(([id, name]) => (
+              <button key={id} onClick={() => setReading(id)} aria-pressed={reading === id} className={opt(reading === id)}>
+                <span className="block font-medium">{name}</span>
+                <span className="text-sm text-muted">{glyph} {withReading(base, id).cards[0].answer}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
       <h2 className="mb-3 mt-8 text-xs font-semibold uppercase tracking-[0.18em] text-muted">Direction</h2>
       <div className="grid gap-3 sm:grid-cols-2">
         <button onClick={() => setSetup((s) => ({ ...s, dir: 'forward' }))} aria-pressed={setup.dir === 'forward'} className={opt(setup.dir === 'forward')}>
           <span className="block text-xl font-semibold">{glyph} → {sample.answer}</span>
-          <span className="mt-1 block text-sm text-muted">See the character, type the {deck.lang === 'ja' ? 'romaji' : 'Hán Việt name, pinyin or meaning'}.</span>
+          <span className="mt-1 block text-sm text-muted">See the character, type the {deck.lang === 'ja' ? 'romaji' : `${reading === 'pinyin' ? 'pinyin' : 'Hán Việt name'} or meaning`}.</span>
         </button>
         <button onClick={() => setSetup((s) => ({ ...s, dir: 'reverse' }))} aria-pressed={setup.dir === 'reverse'} className={opt(setup.dir === 'reverse')}>
           <span className="block text-xl font-semibold">{sample.answer} → {glyph}</span>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeftRight, Check, Layers, LayoutGrid, Lock, Rocket, RotateCcw, X } from 'lucide-react';
-import { DECKS, fontOf, getDeck, langAttr } from './decks';
+import { DECKS, READINGS, fontOf, getDeck, langAttr, withReading } from './decks';
 import { AuthDialog, useAccount } from './account';
 import Landing from './Landing';
 import Asteroids from './Asteroids';
@@ -40,6 +40,7 @@ export default function App() {
   // Learned card ids, shared across decks (so "Kana mix" progress counts toward hiragana/katakana too).
   const [known, setKnown] = useState(() => new Set(load('moji.known', [])));
   const [reverse, setReverse] = useState(() => load('moji.reverse', false));
+  const [reading, setReading] = useState(() => load('moji.reading', 'hv')); // radicals: answer by Hán Việt name or pinyin
 
   const updateKnown = useCallback((fn) => setKnown((prev) => {
     const next = new Set(prev);
@@ -56,10 +57,11 @@ export default function App() {
   const account = useAccount(known, replaceKnown);
 
   const toggleReverse = () => setReverse((r) => { save('moji.reverse', !r); return !r; });
+  const chooseReading = (r) => { save('moji.reading', r); setReading(r); };
 
   const [auth, setAuth] = useState(null); // sign-in modal: null | 'signin' | 'signup'
   const [lesson, setLesson] = useState(null); // the open card or deck as text, for the study helper (lesson.js)
-  const deck = route[0] === 'd' && getDeck(route[1]);
+  const deck = route[0] === 'd' && withReading(getDeck(route[1]), reading);
   const play = route[0] === 'play';
   const admin = route[0] === 'admin';
   // Whitelist: only approved accounts get past the landing page. No client ID (local dev) = open.
@@ -75,9 +77,9 @@ export default function App() {
     page = (
       <Shell here={deck ? deck.id : play ? 'play' : admin ? 'admin' : 'home'} account={account} known={known} lesson={lesson}>
         {admin ? <Admin account={account} />
-          : play ? <Asteroids key={route[1] || ''} initialDeck={getDeck(route[1])?.id} />
-          : deck ? <DeckView deck={deck} tab={route[2] === 'browse' ? 'browse' : 'study'} known={known}
-            updateKnown={updateKnown} reverse={reverse} toggleReverse={toggleReverse} setLesson={setLesson} />
+          : play ? <Asteroids key={route[1] || ''} initialDeck={getDeck(route[1])?.id} reading={reading} setReading={chooseReading} />
+          : deck ? <DeckView deck={deck} tab={route[2] === 'browse' ? 'browse' : 'study'} known={known} updateKnown={updateKnown}
+            reverse={reverse} toggleReverse={toggleReverse} reading={reading} setReading={chooseReading} setLesson={setLesson} />
           : <Dashboard known={known} account={account} last={getDeck(load('moji.last', null)) || DECKS[0]} />}
       </Shell>
     );
@@ -184,7 +186,7 @@ function Gate({ account, openAuth }) {
   );
 }
 
-function DeckView({ deck, tab, known, updateKnown, reverse, toggleReverse, setLesson }) {
+function DeckView({ deck, tab, known, updateKnown, reverse, toggleReverse, reading, setReading, setLesson }) {
   const font = fontOf(deck);
   const learned = deck.cards.filter((c) => known.has(c.id)).length;
   const tabClass = (t) => `flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition ${tab === t ? 'bg-card text-ink shadow-sm' : 'text-muted hover:text-ink'}`;
@@ -207,7 +209,8 @@ function DeckView({ deck, tab, known, updateKnown, reverse, toggleReverse, setLe
       </header>
 
       {tab === 'study' ? (
-        <Study key={`${deck.id}-${reverse}`} deck={deck} font={font} reverse={reverse} toggleReverse={toggleReverse} known={known} updateKnown={updateKnown} setLesson={setLesson} />
+        <Study key={`${deck.id}-${reverse}-${reading}`} deck={deck} font={font} reverse={reverse} toggleReverse={toggleReverse} known={known} updateKnown={updateKnown}
+          reading={reading} setReading={setReading} setLesson={setLesson} />
       ) : (
         <Browse deck={deck} font={font} known={known} updateKnown={updateKnown} setLesson={setLesson} />
       )}
@@ -215,7 +218,7 @@ function DeckView({ deck, tab, known, updateKnown, reverse, toggleReverse, setLe
   );
 }
 
-function Study({ deck, font, reverse, toggleReverse, known, updateKnown, setLesson }) {
+function Study({ deck, font, reverse, toggleReverse, known, updateKnown, reading, setReading, setLesson }) {
   const [unlearnedOnly, setUnlearnedOnly] = useState(false);
   const [queue, setQueue] = useState(() => shuffle(deck.cards));
   const [total, setTotal] = useState(deck.cards.length);
@@ -308,6 +311,14 @@ function Study({ deck, font, reverse, toggleReverse, known, updateKnown, setLess
       <aside className="grid content-start gap-4 sm:grid-cols-2 lg:grid-cols-1">
         <Panel title="Options">
           <div className="grid gap-2">
+            {deck.pinyinCards && (
+              <div role="group" aria-label="Answer with" className="grid h-10 grid-cols-2 gap-1 rounded-xl border border-white/10 p-1 text-sm">
+                {READINGS.map(([id, name]) => (
+                  <button key={id} onClick={() => setReading(id)} aria-pressed={reading === id}
+                    className={`rounded-lg transition ${reading === id ? 'bg-white/[0.08] font-medium text-ink' : 'text-muted hover:text-ink'}`}>{name}</button>
+                ))}
+              </div>
+            )}
             <button onClick={toggleReverse} className={opt(false)} aria-pressed={reverse}>
               <ArrowLeftRight size={15} />{reverse ? 'Answer → Character' : 'Character → Answer'}
             </button>

@@ -6,11 +6,11 @@ const ALIAS = { shi: ['si'], chi: ['ti'], tsu: ['tu'], fu: ['hu'], ji: ['zi'], d
 // Case, accents/tones (rén → ren, Nhân → nhan) and spaces don't matter. Kana dakuten survive (U+3099 isn't stripped).
 export const norm = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/\s+/g, '').normalize('NFC');
 
-// forward: type the reading. Radicals accept the Hán Việt name or any of answerSub's "pinyin · english · vietnamese".
+// forward: type the reading (the chosen one for radicals: Hán Việt name or pinyin, not both) or a radical's meaning.
 // reverse: type the character; any card in the deck with the same reading counts (kana mix: a → あ or ア).
 export const acceptFor = (card, deck, dir) => {
   if (dir === 'forward') {
-    const parts = [card.answer, ...(card.answerSub ? card.answerSub.split('·') : [])].map(norm);
+    const parts = [card.answer, ...(card.meanings || [])].map(norm);
     return [...new Set(parts.flatMap((p) => [p, ...(ALIAS[p] || [])]))];
   }
   const a = norm(card.answer);

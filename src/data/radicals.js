@@ -53,11 +53,15 @@ const RAW = [
   ['鳥', '鸟', 'Điểu', 'niǎo', 'bird', 'chim', '鸡鸭鸣鹅'],
 ];
 
-export const RADICALS = RAW.map(([glyph, alt, hv, pinyin, en, vi, ex], i) => ({
+// Answered by Hán Việt name (default) or pinyin, picked in Study options or Asteroid Shooter. Same ids, so progress is shared.
+const build = (byPinyin) => RAW.map(([glyph, alt, hv, pinyin, en, vi, ex], i) => ({
   id: `r${i + 1}`,
   glyph,
   glyphAlt: alt,
-  answer: hv,
-  answerSub: `${pinyin} · ${en} · ${vi}`,
+  answer: byPinyin ? pinyin : hv,
+  answerSub: `${byPinyin ? hv : pinyin} · ${en} · ${vi}`,
+  meanings: `${en}, ${vi}`.replace(/ \(.*?\)/g, '').split(', '), // Asteroid Shooter also takes these: "person", "người"
   examples: [...ex],
 }));
+export const RADICALS = build(false);
+export const RADICALS_PINYIN = build(true);
