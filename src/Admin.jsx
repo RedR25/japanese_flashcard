@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft } from 'lucide-react';
 
 const call = async (path, body) => {
   const res = await fetch(`/api${path}`, body === undefined ? {} : {
@@ -51,28 +50,16 @@ export default function Admin({ account }) {
     }
   };
 
-  const back = (
-    <a href="#/" className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-muted transition hover:bg-white/10 hover:text-ink">
-      <ArrowLeft size={15} />Back to Moji
-    </a>
-  );
-
   if (!isAdmin) {
-    return (
-      <main className="mx-auto max-w-2xl px-4 py-10">
-        {back}
-        <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.03] p-8 text-center text-sm text-muted">Admins only.</div>
-      </main>
-    );
+    return <div className="mx-auto max-w-2xl rounded-3xl border border-white/10 bg-white/[0.03] p-8 text-center text-sm text-muted">Admins only.</div>;
   }
 
   const count = (s) => users?.filter((u) => u.status === s).length ?? 0;
   const rows = users?.filter((u) => u.status === tab) ?? [];
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-10">
-      {back}
-      <h1 className="mt-6 text-3xl font-semibold tracking-tight">Manage access</h1>
+    <div className="mx-auto max-w-2xl">
+      <h1 className="text-3xl font-semibold tracking-tight">Manage access</h1>
       <p className="mt-1.5 text-sm text-muted">Only approved people get into Moji.</p>
 
       <div className="mt-6 flex rounded-full border border-white/10 bg-white/[0.03] p-1">
@@ -105,6 +92,6 @@ export default function Admin({ account }) {
           </li>
         ))}
       </ul>
-    </main>
+    </div>
   );
 }

@@ -1,17 +1,15 @@
 import { ArrowRight, Cloud, Layers, MousePointer2, Repeat } from 'lucide-react';
-import { DECKS, LANGS } from './decks';
+import { DECKS, LANGS, fontOf, gradient, langAttr } from './decks';
 import { UserMenu } from './account';
 
-// Per-deck look for the landing page. Fan order is left → right; `lift` drops the outer cards (% of card height).
+// Fan layout, left → right; `lift` drops the outer cards (% of card height). Colors and glyphs live on the decks.
 const LOOK = {
-  'kana-mixed': { from: '#2bd4a4', to: '#9be15d', glyph: 'かナ', rot: -13, lift: 20 },
-  hiragana: { from: '#ff5f8f', to: '#ff9a6b', glyph: 'あ', rot: -4, lift: 0, hero: true },
-  radicals: { from: '#ffb547', to: '#ff6a3d', glyph: '人', rot: 4, lift: 0 },
-  katakana: { from: '#5b7cff', to: '#a77bff', glyph: 'ア', rot: 13, lift: 20 },
+  'kana-mixed': { rot: -13, lift: 20 },
+  hiragana: { rot: -4, lift: 0, hero: true },
+  radicals: { rot: 4, lift: 0 },
+  katakana: { rot: 13, lift: 20 },
 };
 const FAN = Object.keys(LOOK).map((id) => DECKS.find((d) => d.id === id));
-const fontOf = (deck) => LANGS.find((l) => l.id === deck.lang).font;
-const langAttr = (deck) => (deck.lang === 'zh' ? 'zh-Hans' : deck.lang);
 const learnedIn = (deck, known) => deck.cards.filter((c) => known.has(c.id)).length;
 const scrollTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
 
@@ -142,10 +140,11 @@ function Cursor({ className, color, label, flip }) {
 }
 
 function FanCard({ deck, learned }) {
-  const { from, to, glyph, rot, lift, hero } = LOOK[deck.id];
+  const { rot, lift, hero } = LOOK[deck.id];
+  const glyph = deck.emblem;
   return (
     <a href={`#/d/${deck.id}`} aria-label={`Study ${deck.title}`}
-      style={{ '--r': `${rot}deg`, '--y': `${lift}%`, background: `linear-gradient(160deg, ${from}, ${to})` }}
+      style={{ '--r': `${rot}deg`, '--y': `${lift}%`, background: gradient(deck) }}
       className={`group relative -mx-6 flex h-40 w-28 shrink-0 origin-bottom flex-col rounded-[20px] p-3 text-left text-white shadow-[0_30px_60px_-20px_rgb(0_0_0/0.8)] ring-1 ring-white/20 transition-transform duration-300 ease-out [transform:translateY(var(--y))_rotate(var(--r))] hover:z-10 hover:[transform:translateY(calc(var(--y)-18px))_rotate(0deg)] sm:-mx-5 sm:h-56 sm:w-40 sm:rounded-[26px] sm:p-4 lg:-mx-3 lg:h-72 lg:w-56 lg:p-5 ${hero ? 'z-[5]' : ''}`}>
       <span className="text-sm font-bold leading-tight sm:text-base lg:text-xl">{deck.title}</span>
       <span className="text-xs text-white/75">{deck.cards.length} cards</span>
@@ -160,11 +159,10 @@ function FanCard({ deck, learned }) {
 }
 
 function DeckRow({ deck, learned }) {
-  const { from, to } = LOOK[deck.id];
   const pct = Math.round((learned / deck.cards.length) * 100);
   return (
     <a href={`#/d/${deck.id}`} className="group flex items-center gap-4 rounded-3xl border border-white/10 bg-white/[0.03] p-4 transition hover:border-white/20 hover:bg-white/[0.06]">
-      <span className={`${fontOf(deck)} grid h-16 w-16 shrink-0 place-items-center rounded-2xl text-2xl font-bold text-white`} style={{ background: `linear-gradient(160deg, ${from}, ${to})` }} lang={langAttr(deck)}>
+      <span className={`${fontOf(deck)} grid h-16 w-16 shrink-0 place-items-center rounded-2xl text-2xl font-bold text-white`} style={{ background: gradient(deck) }} lang={langAttr(deck)}>
         {deck.native.slice(0, 2)}
       </span>
       <span className="min-w-0 flex-1">

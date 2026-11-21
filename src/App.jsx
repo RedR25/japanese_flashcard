@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowLeftRight, Check, Layers, LayoutGrid, Lock, Rocket, RotateCcw, X } from 'lucide-react';
-import { LANGS, getDeck } from './decks';
+import { ArrowLeftRight, Check, Layers, LayoutGrid, Lock, Rocket, RotateCcw, X } from 'lucide-react';
+import { DECKS, fontOf, getDeck, langAttr } from './decks';
 import { AuthDialog, useAccount } from './account';
 import Landing from './Landing';
 import Asteroids from './Asteroids';
 import Admin from './Admin';
+import Dashboard, { Emblem, Panel, Shell } from './Dashboard';
 
 const load = (k, fallback) => {
   try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fallback; } catch { return fallback; }
@@ -21,9 +22,6 @@ const shuffle = (array) => {
   }
   return a;
 };
-
-const langOf = (deck) => LANGS.find((l) => l.id === deck.lang);
-const htmlLang = (deck) => (deck.lang === 'zh' ? 'zh-Hans' : deck.lang);
 
 function useRoute() {
   const read = () => window.location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
@@ -62,17 +60,26 @@ export default function App() {
   const deck = route[0] === 'd' && getDeck(route[1]);
   const play = route[0] === 'play';
   const admin = route[0] === 'admin';
-  // Whitelist: everything but the landing page needs an approved account. No client ID (local dev) = open.
-  const locked = (deck || play || admin) && account.enabled && !account.approved;
+  // Whitelist: only approved accounts get past the landing page. No client ID (local dev) = open.
+  const member = account.approved || !account.enabled;
+  useEffect(() => { if (deck) save('moji.last', deck.id); }, [deck]); // the dashboard's "Continue" deck
 
   let page;
-  if (locked) page = <Gate account={account} openAuth={setAuth} />;
-  else if (admin) page = <Admin account={account} />;
-  else if (play) page = <Asteroids key={route[1] || ''} initialDeck={getDeck(route[1])?.id} />;
-  else if (deck) {
-    page = <DeckView deck={deck} tab={route[2] === 'browse' ? 'browse' : 'study'} known={known}
-      updateKnown={updateKnown} reverse={reverse} toggleReverse={toggleReverse} />;
-  } else page = <Landing known={known} account={account} openAuth={setAuth} />;
+  if (account.enabled && !account.ready) { // wait for /api/me so members don't see the landing page flash first
+    page = <main className="grid min-h-screen place-items-center"><span className="h-6 w-6 animate-spin rounded-full border-2 border-white/20 border-t-white" aria-label="Loading" /></main>;
+  } else if (!member) {
+    page = deck || play || admin ? <Gate account={account} openAuth={setAuth} /> : <Landing known={known} account={account} openAuth={setAuth} />;
+  } else {
+    page = (
+      <Shell here={deck ? deck.id : play ? 'play' : admin ? 'admin' : 'home'} account={account} known={known}>
+        {admin ? <Admin account={account} />
+          : play ? <Asteroids key={route[1] || ''} initialDeck={getDeck(route[1])?.id} />
+          : deck ? <DeckView deck={deck} tab={route[2] === 'browse' ? 'browse' : 'study'} known={known}
+            updateKnown={updateKnown} reverse={reverse} toggleReverse={toggleReverse} />
+          : <Dashboard known={known} account={account} last={getDeck(load('moji.last', null)) || DECKS[0]} />}
+      </Shell>
+    );
+  }
 
   return (
     <div className="min-h-screen">
@@ -154,10 +161,7 @@ function Progress({ value, total, className = '' }) {
 }
 
 function Gate({ account, openAuth }) {
-  const { ready, user } = account;
-  if (!ready) {
-    return <main className="grid min-h-screen place-items-center"><span className="h-6 w-6 animate-spin rounded-full border-2 border-white/20 border-t-white" aria-label="Loading" /></main>;
-  }
+  const { user } = account;
   const primary = 'rounded-full bg-white px-6 py-3 text-sm font-semibold text-black transition hover:bg-white/90';
   const secondary = 'rounded-full border border-white/15 px-6 py-3 text-sm font-semibold transition hover:bg-white/5';
   const [title, body, actions] = !user
@@ -179,17 +183,17 @@ function Gate({ account, openAuth }) {
 }
 
 function DeckView({ deck, tab, known, updateKnown, reverse, toggleReverse }) {
-  const font = langOf(deck).font;
+  const font = fontOf(deck);
   const learned = deck.cards.filter((c) => known.has(c.id)).length;
   const tabClass = (t) => `flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition ${tab === t ? 'bg-card text-ink shadow-sm' : 'text-muted hover:text-ink'}`;
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-4xl flex-col px-4 pb-10 pt-4">
-      <header className="mb-6 flex flex-wrap items-center gap-3">
-        <a href="#/" className="-ml-2 rounded-lg p-2 text-muted hover:text-ink" aria-label="Back to decks"><ArrowLeft size={20} /></a>
+    <>
+      <header className="mb-6 flex flex-wrap items-center gap-4">
+        <Emblem deck={deck} className="h-12 w-12 rounded-2xl text-xl" />
         <div className="mr-auto min-w-0">
-          <h1 className="flex items-baseline gap-2 text-xl font-bold">
-            {deck.title}<span className={`${font} text-base font-medium text-muted`} lang={htmlLang(deck)}>{deck.native}</span>
+          <h1 className="flex items-baseline gap-2 text-2xl font-semibold tracking-tight">
+            {deck.title}<span className={`${font} text-base font-medium text-muted`} lang={langAttr(deck)}>{deck.native}</span>
           </h1>
           <p className="text-xs tabular-nums text-muted">{learned} of {deck.cards.length} learned</p>
         </div>
@@ -205,7 +209,7 @@ function DeckView({ deck, tab, known, updateKnown, reverse, toggleReverse }) {
       ) : (
         <Browse deck={deck} font={font} known={known} updateKnown={updateKnown} />
       )}
-    </main>
+    </>
   );
 }
 
@@ -239,8 +243,9 @@ function Study({ deck, font, reverse, toggleReverse, known, updateKnown }) {
 
   const keys = useRef();
   keys.current = (e) => {
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
-    if (e.code === 'Space' || e.key === 'Enter') { e.preventDefault(); if (card) setFlipped((f) => !f); }
+    // Typing in the lookup or chat box isn't a shortcut, and Enter on a link or button keeps its normal job.
+    if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest('input, textarea, select')) return;
+    if (e.code === 'Space' || (e.key === 'Enter' && !e.target.closest('a, button'))) { e.preventDefault(); if (card) setFlipped((f) => !f); }
     else if (flipped && (e.key === '1' || e.key === 'ArrowLeft')) answer(false);
     else if (flipped && (e.key === '2' || e.key === 'ArrowRight')) answer(true);
   };
@@ -250,60 +255,70 @@ function Study({ deck, font, reverse, toggleReverse, known, updateKnown }) {
     return () => window.removeEventListener('keydown', h);
   }, []);
 
-  const toolBtn = 'flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-muted transition hover:border-ink/30 hover:text-ink';
+  const opt = (on) => `flex h-10 w-full items-center gap-2 rounded-xl border px-3 text-sm transition ${on ? 'border-seal/50 text-seal' : 'border-white/10 text-muted hover:border-white/25 hover:text-ink'}`;
 
   return (
-    <div className="flex flex-1 flex-col items-center">
-      <div className="mb-5 flex w-full max-w-md flex-wrap items-center justify-center gap-2">
-        <button onClick={toggleReverse} className={toolBtn} aria-pressed={reverse}>
-          <ArrowLeftRight size={14} />{reverse ? 'Answer → Character' : 'Character → Answer'}
-        </button>
-        <button onClick={() => { const next = !unlearnedOnly; setUnlearnedOnly(next); restart(next ? unlearnedCards : deck.cards); }}
-          className={`${toolBtn} ${unlearnedOnly ? 'border-seal/50 text-seal' : ''}`} aria-pressed={unlearnedOnly}>
-          Unlearned only ({unlearnedCards.length})
-        </button>
-        <button onClick={() => restart(unlearnedOnly ? unlearnedCards : deck.cards)} className={toolBtn}><RotateCcw size={14} />Restart</button>
-      </div>
-
-      <div className="mb-6 flex w-full max-w-md items-center gap-3 text-xs tabular-nums text-muted">
-        <Progress value={total - queue.length} total={total} />
-        <span className="shrink-0">{total - queue.length}/{total}</span>
-      </div>
-
-      {card ? (
-        <>
-          <Flashcard key={turn} card={card} deck={deck} font={font} reverse={reverse} flipped={flipped} onFlip={() => setFlipped((f) => !f)} />
-          <div className="mt-6 flex h-14 w-full max-w-md gap-3">
-            {flipped ? (
-              <>
-                <button onClick={() => answer(false)} className="flex flex-1 items-center justify-center gap-2 rounded-xl border-2 border-seal/40 font-semibold text-seal transition hover:bg-seal/10">
-                  <X size={18} />Again
-                </button>
-                <button onClick={() => answer(true)} className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-jade font-semibold text-white transition hover:brightness-110">
-                  <Check size={18} />Got it
-                </button>
-              </>
-            ) : (
-              <button onClick={() => setFlipped(true)} className="flex-1 rounded-xl bg-ink font-semibold text-paper transition hover:opacity-90">Show answer</button>
-            )}
-          </div>
-          <p className="mt-4 hidden text-xs text-muted sm:block">
-            <Kbd>Space</Kbd> flip · <Kbd>1</Kbd> again · <Kbd>2</Kbd> got it
-          </p>
-        </>
-      ) : (
-        <div className="flex w-full max-w-md flex-col items-center rounded-2xl border border-line bg-card px-6 py-12 text-center shadow-sm">
-          <div className="mb-4 grid h-14 w-14 place-items-center rounded-full bg-jade/15 text-jade"><Check size={28} /></div>
-          <h2 className="text-xl font-bold">{total ? 'Session complete' : 'Nothing left to learn here'}</h2>
-          <p className="mt-1 text-sm text-muted">
-            {total ? `${total} cards cleared · ${missed} ${missed === 1 ? 'miss' : 'misses'} along the way` : 'Every card in this deck is marked learned.'}
-          </p>
-          <div className="mt-6 flex gap-3">
-            <button onClick={() => { setUnlearnedOnly(false); restart(deck.cards); }} className="rounded-xl bg-ink px-5 py-2.5 text-sm font-semibold text-paper hover:opacity-90">Study again</button>
-            <a href="#/" className="rounded-xl border border-line px-5 py-2.5 text-sm font-semibold hover:border-ink/30">All decks</a>
-          </div>
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_16rem]">
+      <section className="flex flex-col items-center rounded-3xl border border-white/[0.06] bg-white/[0.02] px-4 py-6 sm:p-8">
+        <div className="mb-6 flex w-full max-w-md items-center gap-3 text-xs tabular-nums text-muted">
+          <Progress value={total - queue.length} total={total} />
+          <span className="shrink-0">{total - queue.length}/{total}</span>
         </div>
-      )}
+
+        {card ? (
+          <>
+            <Flashcard key={turn} card={card} deck={deck} font={font} reverse={reverse} flipped={flipped} onFlip={() => setFlipped((f) => !f)} />
+            <div className="mt-6 flex h-14 w-full max-w-md gap-3">
+              {flipped ? (
+                <>
+                  <button onClick={() => answer(false)} className="flex flex-1 items-center justify-center gap-2 rounded-xl border-2 border-seal/40 font-semibold text-seal transition hover:bg-seal/10">
+                    <X size={18} />Again
+                  </button>
+                  <button onClick={() => answer(true)} className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-jade font-semibold text-white transition hover:brightness-110">
+                    <Check size={18} />Got it
+                  </button>
+                </>
+              ) : (
+                <button onClick={() => setFlipped(true)} className="flex-1 rounded-xl bg-ink font-semibold text-paper transition hover:opacity-90">Show answer</button>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="flex w-full max-w-md flex-col items-center rounded-2xl border border-line bg-card px-6 py-12 text-center shadow-sm">
+            <div className="mb-4 grid h-14 w-14 place-items-center rounded-full bg-jade/15 text-jade"><Check size={28} /></div>
+            <h2 className="text-xl font-bold">{total ? 'Session complete' : 'Nothing left to learn here'}</h2>
+            <p className="mt-1 text-sm text-muted">
+              {total ? `${total} cards cleared · ${missed} ${missed === 1 ? 'miss' : 'misses'} along the way` : 'Every card in this deck is marked learned.'}
+            </p>
+            <div className="mt-6 flex gap-3">
+              <button onClick={() => { setUnlearnedOnly(false); restart(deck.cards); }} className="rounded-xl bg-ink px-5 py-2.5 text-sm font-semibold text-paper hover:opacity-90">Study again</button>
+              <a href="#/" className="rounded-xl border border-line px-5 py-2.5 text-sm font-semibold hover:border-ink/30">Dashboard</a>
+            </div>
+          </div>
+        )}
+      </section>
+
+      <aside className="grid content-start gap-4 sm:grid-cols-2 lg:grid-cols-1">
+        <Panel title="Options">
+          <div className="grid gap-2">
+            <button onClick={toggleReverse} className={opt(false)} aria-pressed={reverse}>
+              <ArrowLeftRight size={15} />{reverse ? 'Answer → Character' : 'Character → Answer'}
+            </button>
+            <button onClick={() => { const next = !unlearnedOnly; setUnlearnedOnly(next); restart(next ? unlearnedCards : deck.cards); }}
+              className={opt(unlearnedOnly)} aria-pressed={unlearnedOnly}>
+              Unlearned only<span className="ml-auto tabular-nums">{unlearnedCards.length}</span>
+            </button>
+            <button onClick={() => restart(unlearnedOnly ? unlearnedCards : deck.cards)} className={opt(false)}><RotateCcw size={15} />Restart</button>
+          </div>
+        </Panel>
+        <Panel title="Keys" className="hidden sm:block">
+          <dl className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2.5 text-sm text-muted">
+            <dt><Kbd>Space</Kbd></dt><dd>Flip the card</dd>
+            <dt><Kbd>1</Kbd></dt><dd>Again, it comes back soon</dd>
+            <dt><Kbd>2</Kbd></dt><dd>Got it, marks it learned</dd>
+          </dl>
+        </Panel>
+      </aside>
     </div>
   );
 }
@@ -312,7 +327,7 @@ const Kbd = ({ children }) => <kbd className="rounded border border-line bg-card
 
 function Glyph({ card, deck, font, size }) {
   return (
-    <span className="flex items-end justify-center gap-3" lang={htmlLang(deck)}>
+    <span className="flex items-end justify-center gap-3" lang={langAttr(deck)}>
       <span className={`${font} ${size} font-bold leading-none`}>{card.glyph}</span>
       {card.glyphAlt && <span className={`${font} text-3xl font-medium text-muted`}>{card.glyphAlt}</span>}
     </span>
@@ -340,7 +355,7 @@ function Flashcard({ card, deck, font, reverse, flipped, onFlip }) {
           <span className={`mt-5 font-semibold ${reverse ? 'text-2xl' : 'text-5xl'}`}>{card.answer}</span>
           {card.answerSub && <span className="mt-2 text-sm text-muted">{card.answerSub}</span>}
           {card.examples && (
-            <span className={`${font} mt-5 flex gap-3 text-2xl text-ink/80`} lang={htmlLang(deck)}>
+            <span className={`${font} mt-5 flex gap-3 text-2xl text-ink/80`} lang={langAttr(deck)}>
               {card.examples.map((c) => <span key={c}>{c}</span>)}
             </span>
           )}
@@ -370,7 +385,7 @@ function Browse({ deck, font, known, updateKnown }) {
               <button onClick={() => updateKnown((s) => (isKnown ? s.delete(c.id) : s.add(c.id)))} aria-pressed={isKnown}
                 className={`relative flex h-full w-full flex-col items-center rounded-xl border bg-card px-2 py-3 text-center transition hover:border-ink/30 ${isKnown ? 'border-jade/50' : 'border-line'}`}>
                 {isKnown && <Check size={12} className="absolute right-2 top-2 text-jade" />}
-                <span className={`${font} font-bold leading-tight ${rich ? 'text-4xl' : 'text-3xl'}`} lang={htmlLang(deck)}>
+                <span className={`${font} font-bold leading-tight ${rich ? 'text-4xl' : 'text-3xl'}`} lang={langAttr(deck)}>
                   {c.glyph}{c.glyphAlt && <span className="ml-1.5 text-xl font-medium text-muted">{c.glyphAlt}</span>}
                 </span>
                 <span className={`mt-1.5 font-medium ${rich ? 'text-sm' : 'text-xs text-muted'}`}>{c.answer}</span>

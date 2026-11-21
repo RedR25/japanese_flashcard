@@ -1,6 +1,6 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
 import { ArrowLeft, Heart, Pause, Rocket } from 'lucide-react';
-import { DECKS, LANGS, getDeck } from './decks';
+import { DECKS, fontOf, getDeck, langAttr } from './decks';
 import { acceptFor, norm, pickTarget } from './asteroids-logic.js';
 
 // Typing game: asteroids carry a prompt; type its match to shoot it before it reaches the ground.
@@ -22,8 +22,6 @@ const store = {
   set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage blocked */ } },
 };
 const bestKey = (deckId, dir) => `moji.astro.best.${deckId}.${dir}`;
-const fontOf = (deck) => LANGS.find((l) => l.id === deck.lang).font;
-const langAttr = (deck) => (deck.lang === 'zh' ? 'zh-Hans' : deck.lang);
 
 export default function Asteroids({ initialDeck }) {
   const [setup, setSetup] = useState(() => {
@@ -56,9 +54,8 @@ function Setup({ setup, setSetup, onStart }) {
   const glyph = <span className={fontOf(deck)} lang={langAttr(deck)}>{sample.glyph}</span>;
 
   return (
-    <main className="mx-auto max-w-2xl px-4 pb-16 pt-4">
-      <a href="#/" className="-ml-2 inline-flex items-center gap-1 rounded-lg p-2 text-sm text-muted hover:text-ink"><ArrowLeft size={18} />Home</a>
-      <div className="mt-6 flex items-center gap-3">
+    <div className="mx-auto max-w-2xl">
+      <div className="flex items-center gap-3">
         <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-[#5b7cff] to-[#a77bff]"><Rocket size={22} /></span>
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Asteroid Shooter</h1>
@@ -96,7 +93,7 @@ function Setup({ setup, setSetup, onStart }) {
         {best > 0 && <>Best here: <span className="font-semibold text-ink">{best}</span> · </>}
         Answers fire as you type · <Kbd>Enter</Kbd> when one answer starts another (n / na) · <Kbd>Esc</Kbd> pause
       </p>
-    </main>
+    </div>
   );
 }
 
@@ -184,8 +181,8 @@ function Game({ deck, dir, onEnd, onQuit }) {
   const dead = typed && !s.rocks.some((r) => r.accept.some((a) => a.startsWith(typed)));
   const flash = s.fx.some((f) => f.kind === 'crash' && s.time - f.t < 0.3);
 
-  return (
-    <div className="flex h-[100dvh] select-none flex-col bg-[#05050a]">
+  return ( // fixed: the game covers the app shell (sidebar, chat button) while it runs
+    <div className="fixed inset-x-0 top-0 z-50 flex h-[100dvh] select-none flex-col bg-[#05050a]">
       <header className="flex items-center gap-2 border-b border-white/5 px-3 py-2 sm:gap-3 sm:px-5">
         <button onClick={onQuit} className="rounded-lg p-2 text-muted hover:text-ink" aria-label="Quit to setup"><ArrowLeft size={20} /></button>
         <div className="flex gap-1" role="img" aria-label={`${s.lives} lives left`}>
@@ -262,7 +259,7 @@ function Game({ deck, dir, onEnd, onQuit }) {
 function Over({ result, deck, dir, onAgain, onSetup }) {
   const font = fontOf(deck);
   return (
-    <main className="mx-auto max-w-xl px-4 py-12 text-center">
+    <div className="mx-auto max-w-xl py-6 text-center">
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-seal">Game over</p>
       <div className="mt-3 text-7xl font-semibold tabular-nums tracking-tight">{result.score}</div>
       <p className="mt-2 text-sm text-muted">{result.newBest ? 'New best!' : `Best: ${result.best}`} · {deck.title} · {dir === 'forward' ? 'character → reading' : 'reading → character'}</p>
@@ -294,6 +291,6 @@ function Over({ result, deck, dir, onAgain, onSetup }) {
         <button onClick={onSetup} className="rounded-full border border-white/15 px-6 py-3 text-sm font-semibold hover:bg-white/5">Change setup</button>
         <a href={`#/d/${deck.id}`} className="rounded-full border border-white/15 px-6 py-3 text-sm font-semibold hover:bg-white/5">Study {deck.title}</a>
       </div>
-    </main>
+    </div>
   );
 }

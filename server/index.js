@@ -4,7 +4,8 @@ import express from 'express';
 import pg from 'pg';
 import { OAuth2Client } from 'google-auth-library';
 
-const { DATABASE_URL, GOOGLE_CLIENT_ID, ADMIN_EMAILS = '', PORT = 3000, NODE_ENV } = process.env;
+const { DATABASE_URL, GOOGLE_CLIENT_ID, ADMIN_EMAILS = '', PORT = 3000, NODE_ENV,
+  OPENROUTER_API_KEY, OPENROUTER_MODEL = 'nvidia/nemotron-3.5-lightning:free' } = process.env;
 if (!DATABASE_URL) throw new Error('DATABASE_URL is required');
 
 const db = new pg.Pool({ connectionString: DATABASE_URL });
@@ -167,6 +168,55 @@ app.patch('/api/admin/users/:id', auth, admin, async (req, res) => {
     'update users set status = $1 where id = $2 returning id, email, name, picture, status, created_at', [status, req.params.id]);
   if (!rows[0]) return res.status(404).json({ error: 'not found' });
   res.json({ user: rows[0] });
+});
+
+// Study helper chat. The OpenRouter key never leaves this server, and the system prompt is set here, not by the client.
+const CHAT_PROMPT = [
+  'You are the study helper inside Moji, a flashcard app for Japanese hiragana and katakana and the 50 most common Chinese radicals (bộ thủ). Radicals are taught with their Hán Việt name, pinyin, and English and Vietnamese meanings.',
+  'Only help with the language side of that: reading and writing kana and hanzi, romaji, pinyin, Hán Việt readings, what a radical means and which characters use it, stroke order, pronunciation, look-alike characters, mnemonics, and example words or short sentences.',
+  'If a message is about anything else, say in one sentence that you only help with Japanese and Chinese characters, then suggest a related study question.',
+  'Reply in the language the user writes in. Keep replies short: a few sentences or a short list. Show the characters themselves with the reading in parentheses, like か (ka) or 人 (rén, Nhân). Plain text only, no markdown.',
+].join('\n');
+const CHAT_PER_MINUTE = 10;
+const chatTimes = new Map(); // user id → recent request times. ponytail: per-process; move to Postgres if Railway runs >1 instance
+const validChat = (m) => Array.isArray(m) && m.length >= 1 && m.length <= 20
+  && m.every((x) => ['user', 'assistant'].includes(x?.role) && typeof x.content === 'string' && x.content.trim())
+  && m.at(-1).role === 'user' && m.at(-1).content.length <= 2000;
+
+app.post('/api/chat', auth, async (req, res) => {
+  if (!approved(req.user)) return res.status(403).json({ error: 'not_approved' });
+  const { messages } = req.body ?? {};
+  if (!validChat(messages)) return res.status(400).json({ error: 'bad request' });
+  if (!OPENROUTER_API_KEY) return res.status(503).json({ error: 'chat not configured' });
+  const now = Date.now();
+  const recent = (chatTimes.get(req.user.id) ?? []).filter((t) => now - t < 60_000);
+  if (recent.length >= CHAT_PER_MINUTE) return res.status(429).json({ error: 'slow down' });
+  chatTimes.set(req.user.id, [...recent, now]);
+
+  let r;
+  try {
+    r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${OPENROUTER_API_KEY}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: OPENROUTER_MODEL,
+        messages: [{ role: 'system', content: CHAT_PROMPT }, ...messages.map(({ role, content }) => ({ role, content: content.slice(0, 4000) }))],
+        max_tokens: 1500,
+        temperature: 0.3,
+        reasoning: { effort: 'low', exclude: true }, // a reasoning model: keep the thinking short and out of the reply
+      }),
+      signal: AbortSignal.timeout(45_000),
+    });
+  } catch {
+    return res.status(504).json({ error: 'chat timed out' });
+  }
+  const data = await r.json().catch(() => ({}));
+  const reply = data.choices?.[0]?.message?.content?.replace(/<think>[\s\S]*?<\/think>/g, '').trim(); // some hosts inline the thinking
+  if (!r.ok || !reply) {
+    console.error('openrouter', r.status, data.error?.message ?? 'empty reply'); // never log the user's messages
+    return res.status(r.status === 429 ? 429 : 502).json({ error: 'chat failed' });
+  }
+  res.json({ reply });
 });
 
 // Express 5 forwards async errors here. Never leak internals. (4-arg signature is how Express recognises it.)

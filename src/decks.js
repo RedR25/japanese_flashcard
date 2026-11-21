@@ -1,6 +1,6 @@
 import { RADICALS } from './data/radicals.js';
 
-// To add a deck: push { id, lang, title, native, blurb, cards: [{ id, glyph, answer, glyphAlt?, answerSub?, examples? }] }
+// To add a deck: push { id, lang, title, native, emblem, colors: [from, to], blurb, cards: [{ id, glyph, answer, glyphAlt?, answerSub?, examples? }] }
 const ROMAJI = 'a i u e o ka ki ku ke ko ga gi gu ge go sa shi su se so za ji zu ze zo ta chi tsu te to da di du de do na ni nu ne no ha hi fu he ho ba bi bu be bo pa pi pu pe po ma mi mu me mo ya yu yo ra ri ru re ro wa wo n'.split(' ');
 const HIRA = [...'あいうえおかきくけこがぎぐげごさしすせそざじずぜぞたちつてとだぢづでどなにぬねのはひふへほばびぶべぼぱぴぷぺぽまみむめもやゆよらりるれろわをん'];
 const KATA = [...'アイウエオカキクケコガギグゲゴサシスセソザジズゼゾタチツテトダヂヅデドナニヌネノハヒフヘホバビブベボパピプペポマミムメモヤユヨラリルレロワヲン'];
@@ -15,10 +15,13 @@ export const LANGS = [
 ];
 
 export const DECKS = [
-  { id: 'hiragana', lang: 'ja', title: 'Hiragana', native: 'ひらがな', blurb: 'The core phonetic script', cards: hiragana },
-  { id: 'katakana', lang: 'ja', title: 'Katakana', native: 'カタカナ', blurb: 'Script for loanwords', cards: katakana },
-  { id: 'kana-mixed', lang: 'ja', title: 'Kana mix', native: 'かな', blurb: 'Hiragana and katakana together', cards: [...hiragana, ...katakana] },
-  { id: 'radicals', lang: 'zh', title: '50 Radicals', native: '部首', blurb: 'Bộ thủ — the building blocks of hanzi', cards: RADICALS },
+  { id: 'hiragana', lang: 'ja', title: 'Hiragana', native: 'ひらがな', emblem: 'あ', colors: ['#ff5f8f', '#ff9a6b'], blurb: 'The core phonetic script', cards: hiragana },
+  { id: 'katakana', lang: 'ja', title: 'Katakana', native: 'カタカナ', emblem: 'ア', colors: ['#5b7cff', '#a77bff'], blurb: 'Script for loanwords', cards: katakana },
+  { id: 'kana-mixed', lang: 'ja', title: 'Kana mix', native: 'かな', emblem: 'かナ', colors: ['#2bd4a4', '#9be15d'], blurb: 'Hiragana and katakana together', cards: [...hiragana, ...katakana] },
+  { id: 'radicals', lang: 'zh', title: '50 Radicals', native: '部首', emblem: '人', colors: ['#ffb547', '#ff6a3d'], blurb: 'Bộ thủ — the building blocks of hanzi', cards: RADICALS },
 ];
 
 export const getDeck = (id) => DECKS.find((d) => d.id === id);
+export const fontOf = (deck) => LANGS.find((l) => l.id === deck.lang).font;
+export const langAttr = (deck) => (deck.lang === 'zh' ? 'zh-Hans' : deck.lang);
+export const gradient = (deck) => `linear-gradient(160deg, ${deck.colors[0]}, ${deck.colors[1]})`;
