@@ -6,17 +6,31 @@ import { browseLesson, studyLesson } from './lesson.js';
 
 const hira = getDeck('hiragana');
 const rad = getDeck('radicals');
-const a = hira.cards[0]; // あ = a
+const ji = hira.cards.find((c) => c.glyph === 'じ');
+const pa = hira.cards.find((c) => c.glyph === 'ぱ');
+const person = rad.cards[0]; // 人
 
-test('study: tells the helper whether the back is hidden; the chip label never shows the hidden side', () => {
-  const hidden = studyLesson(hira, a, { reverse: false, flipped: false });
-  assert.equal(hidden.label, 'あ · Hiragana');
-  assert.match(hidden.text, /Card front: あ\nCard back \(hidden, not flipped yet\): a$/);
-  assert.match(studyLesson(hira, a, { reverse: false, flipped: true }).text, /Card back \(flipped, visible\): a$/);
-  const rev = studyLesson(hira, a, { reverse: true, flipped: false });
-  assert.equal(rev.label, 'a · Hiragana', 'reversed: the chip shows the reading, not the character to recall');
-  assert.match(rev.text, /Card front: a\nCard back \(hidden, not flipped yet\): あ$/);
-  assert.match(studyLesson(rad, rad.cards[0], { reverse: false, flipped: true }).text,
+test('study: an unflipped card never carries its answer, only hint material', () => {
+  const hidden = studyLesson(hira, ji, { reverse: false, flipped: false });
+  assert.equal(hidden.label, 'じ · Hiragana');
+  assert.match(hidden.text, /Card front: じ\nCard back: hidden/);
+  assert.doesNotMatch(hidden.text, /\bji\b/, 'the reading to recall is left out');
+  assert.match(hidden.text, /Hint material: it's し \(shi\) plus the dakuten ゛ mark\.$/);
+  assert.match(studyLesson(hira, pa, { reverse: false, flipped: false }).text, /it's は \(ha\) plus the handakuten ゜ mark\.$/);
+
+  const rev = studyLesson(hira, ji, { reverse: true, flipped: false });
+  assert.equal(rev.label, 'ji · Hiragana', 'reversed: the chip shows the reading, not the character to recall');
+  assert.ok(!rev.text.includes('じ'), 'reversed: the character to recall is left out');
+
+  const radical = studyLesson(rad, person, { reverse: false, flipped: false }).text;
+  assert.doesNotMatch(radical, /Nhân|rén|person|người/, 'radical name, pinyin and meaning left out');
+  assert.match(radical, /Hint material: characters that contain it: 他 你 休 体$/);
+  assert.doesNotMatch(studyLesson(hira, hira.cards[0], { reverse: false, flipped: false }).text, /Hint material/, 'plain kana: nothing to add');
+});
+
+test('study: a flipped card shows its back', () => {
+  assert.match(studyLesson(hira, ji, { reverse: false, flipped: true }).text, /Card front: じ\nCard back \(flipped, visible\): ji$/);
+  assert.match(studyLesson(rad, person, { reverse: false, flipped: true }).text,
     /Card front: 人 \(also written 亻\)\nCard back \(flipped, visible\): Nhân \(rén · person · người\)\nExample characters on the back: 他 你 休 体$/);
 });
 
