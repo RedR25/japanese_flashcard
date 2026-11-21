@@ -77,12 +77,69 @@ export default function App() {
   return (
     <div className="min-h-screen">
       {page}
+      <Scrollbar />
       {account.enabled && <AuthDialog mode={auth} setMode={setAuth} onClose={() => setAuth(null)} account={account} />}
       {account.notice && (
         <div role="status" className="fixed inset-x-0 bottom-6 z-50 mx-auto w-fit rounded-full border border-white/10 bg-[#1c1c1f] px-5 py-2.5 text-sm shadow-2xl">
           {account.notice}
         </div>
       )}
+    </div>
+  );
+}
+
+// Page scrollbar drawn in JS (index.css hides the native one). Wheel, keys and touch still scroll natively;
+// this draws the thumb, shows it on scroll/hover, fades it when idle, and handles thumb drags and track clicks.
+function Scrollbar() {
+  const bar = useRef(null);
+  const thumb = useRef(null);
+  useEffect(() => {
+    const el = bar.current;
+    const root = document.documentElement;
+    let drag = null;
+    let idle;
+    const geo = () => {
+      const view = window.innerHeight;
+      const h = Math.max(40, (view * view) / root.scrollHeight);
+      return { view, max: root.scrollHeight - view, track: view - h, h };
+    };
+    const draw = () => {
+      const { max, track, h } = geo();
+      el.hidden = max <= 0;
+      thumb.current.style.height = `${h}px`;
+      thumb.current.style.transform = `translateY(${max > 0 ? (window.scrollY / max) * track : 0}px)`;
+    };
+    const wake = () => {
+      el.dataset.on = '';
+      clearTimeout(idle);
+      idle = setTimeout(() => { if (!drag) delete el.dataset.on; }, 1200);
+    };
+    const onScroll = () => { draw(); wake(); };
+    const onDown = (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      const { view, max, track } = geo();
+      const t = thumb.current.getBoundingClientRect();
+      if (e.clientY < t.top || e.clientY > t.bottom) { // track click pages up/down, like the native bar
+        window.scrollBy(0, (e.clientY < t.top ? -0.9 : 0.9) * view);
+        return;
+      }
+      drag = { y: e.clientY, top: window.scrollY, ratio: max / track };
+      el.setPointerCapture(e.pointerId);
+    };
+    const onMove = (e) => { if (drag) window.scrollTo(0, drag.top + (e.clientY - drag.y) * drag.ratio); };
+    const onUp = () => { drag = null; wake(); };
+    const on = [[window, 'scroll', onScroll], [window, 'resize', draw], [el, 'pointerdown', onDown],
+      [el, 'pointermove', onMove], [el, 'pointerup', onUp], [el, 'pointercancel', onUp]];
+    on.forEach(([t, ev, fn]) => t.addEventListener(ev, fn, { passive: ev !== 'pointerdown' }));
+    const ro = new ResizeObserver(draw);
+    ro.observe(document.body);
+    draw();
+    return () => { on.forEach(([t, ev, fn]) => t.removeEventListener(ev, fn)); ro.disconnect(); clearTimeout(idle); };
+  }, []);
+  return (
+    <div ref={bar} aria-hidden className="group fixed inset-y-0 right-0 z-40 w-3 select-none opacity-0 transition-opacity duration-300 hover:opacity-100 data-[on]:opacity-100 [@media(pointer:coarse)]:pointer-events-none">
+      <div ref={thumb} className="absolute right-0.5 top-0 w-1.5 rounded-full bg-white/25 transition-[width,background-color] duration-150 group-hover:w-2 group-hover:bg-white/45" />
     </div>
   );
 }
