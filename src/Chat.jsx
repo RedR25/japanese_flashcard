@@ -89,7 +89,7 @@ export default function Chat() {
               <ArrowUp size={18} />
             </button>
           </form>
-          <p className="px-4 pb-3 text-center text-[11px] leading-snug text-muted/60">AI answers via OpenRouter can be wrong. Don’t share personal info.</p>
+          <p className="px-4 pb-3 text-center text-[11px] leading-snug text-muted/60">Don’t share personal info.</p>
         </section>
       )}
 
