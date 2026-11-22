@@ -98,7 +98,7 @@ export default function Range() {
 
   return (
     <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_min(25vw,30rem)] xl:items-start xl:gap-8">
-      <div className="mx-auto max-w-3xl xl:max-w-none">
+      <div className="mx-auto max-w-3xl xl:mx-0 xl:max-w-none">
         <div className="flex items-center gap-3">
           <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-seal to-[#ff9a5c]"><CrosshairIcon size={22} /></span>
           <div>
@@ -275,7 +275,7 @@ export default function Range() {
       </div>
 
       {/* A quarter of the screen down the right, full height, staying put while the lobby scrolls (below it on narrower screens). */}
-      <aside aria-label="Leaderboards" className="mx-auto mt-12 max-w-3xl rounded-3xl border border-white/[0.06] bg-card/60 p-5 xl:sticky xl:top-6 xl:mt-0 xl:h-[calc(100vh-3rem)] xl:max-w-none xl:overflow-y-auto xl:pb-20">
+      <aside aria-label="Leaderboards" className="mx-auto mt-12 max-w-3xl rounded-3xl border border-white/[0.06] bg-card/60 p-5 xl:sticky xl:top-6 xl:mx-0 xl:mt-0 xl:h-[calc(100vh-3rem)] xl:max-w-none xl:overflow-y-auto xl:pb-20">
         <Boards title={`${level.title} · ${chapter.title}`} chapter={boards?.off ? null : boards?.board === board ? boards.chapter : undefined} total={boards?.off ? null : boards?.total} />
       </aside>
     </div>
