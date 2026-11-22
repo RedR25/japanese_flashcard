@@ -5,7 +5,7 @@ import {
   Fog, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, PerspectiveCamera, RepeatWrapping, Scene, Sprite,
   SpriteMaterial, SRGBColorSpace, Vector3, WebGLRenderer,
 } from 'three';
-import { CS2_VFOV, LIFE_MS, VM_VFOV, YAW, placeTargets } from './logic.js';
+import { CS2_VFOV, LIFE_MS, VM_VFOV, YAW, discShades, placeTargets } from './logic.js';
 
 const RAD = Math.PI / 180;
 const EYE = 1.6;
@@ -81,38 +81,54 @@ function fit(g, text, fam, weight, maxW, maxH, start) {
   return { lines: wrap(g, text, maxW).slice(0, 2), size: 26 };
 }
 
-// A word disc: a glossy seal-red orb with the word (and its reading). Dark red once it's revealed as a wrong pick.
-function discTexture(face, wrong) {
+// A word disc is two sprites: the orb, which shrinks and is what you hit, and its word on top, which stays full size so
+// it can be read to the end. The orb: a glossy ball shaded light to dark with a rim (one texture per engine and colour).
+function orbTexture(light, dark, rim) {
   const S = 512;
   const [c, g] = canvas2d(S, S);
   const R = S * 0.46;
   const shade = g.createRadialGradient(S * 0.36, S * 0.3, S * 0.04, S / 2, S / 2, R);
-  shade.addColorStop(0, wrong ? '#7a2438' : '#ff9cad');
-  shade.addColorStop(1, wrong ? '#2c0c16' : '#d8385a');
+  shade.addColorStop(0, light);
+  shade.addColorStop(1, dark);
   g.beginPath();
   g.arc(S / 2, S / 2, R, 0, Math.PI * 2);
   g.fillStyle = shade;
   g.fill();
   g.lineWidth = S * 0.022;
-  g.strokeStyle = wrong ? '#ff5f78' : 'rgba(255,255,255,0.85)';
+  g.strokeStyle = rim;
   g.stroke();
-  g.fillStyle = '#fff';
+  return toTexture(c);
+}
+
+// The word (and its reading): white with a dark outline and a soft shadow, so it reads on any orb colour and, once the
+// orb has shrunk, on the dark wall behind it.
+function labelTexture(face) {
+  const S = 512;
+  const [c, g] = canvas2d(S, S);
   g.textAlign = 'center';
   g.textBaseline = 'middle';
-  g.shadowColor = 'rgba(0,0,0,0.45)';
-  g.shadowBlur = 12;
-  g.shadowOffsetY = 3;
+  g.lineJoin = 'round';
+  g.strokeStyle = 'rgba(6,7,12,0.9)';
   const main = fit(g, face.text, family(face.side), 700, S * 0.72, face.sub ? S * 0.38 : S * 0.52, 172);
   const sub = face.sub && fit(g, face.sub.text, family(face.sub.side), 500, S * 0.66, S * 0.12, Math.min(60, Math.round(main.size * 0.5)));
   const mainH = main.lines.length * main.size * 1.12;
   const subH = sub ? sub.size * 1.4 : 0;
+  const draw = (text, y, size, fill) => {
+    g.lineWidth = Math.max(6, size * 0.12);
+    g.shadowColor = 'rgba(0,0,0,0.6)';
+    g.shadowBlur = 16;
+    g.shadowOffsetY = 3;
+    g.strokeText(text, S / 2, y);
+    g.shadowColor = 'transparent'; // the outline already casts the shadow
+    g.fillStyle = fill;
+    g.fillText(text, S / 2, y);
+  };
   let y = S / 2 - (mainH + subH) / 2;
   g.font = `700 ${main.size}px ${family(face.side)}`;
-  for (const line of main.lines) { g.fillText(line, S / 2, y + main.size * 0.56); y += main.size * 1.12; }
+  for (const line of main.lines) { draw(line, y + main.size * 0.56, main.size, '#fff'); y += main.size * 1.12; }
   if (sub) {
-    g.globalAlpha = 0.85;
     g.font = `500 ${sub.size}px ${family(face.sub.side)}`;
-    g.fillText(sub.lines[0], S / 2, y + subH / 2);
+    draw(sub.lines[0], y + subH / 2, sub.size, 'rgba(255,255,255,0.85)');
   }
   return toTexture(c);
 }
@@ -212,7 +228,7 @@ function makeSounds(volume) {
 }
 
 // on: { onShot({ id, correct, ms } | null), onExpire(), onLock(locked, raw), onLockError() }
-export function createRange(canvas, { sens, motion, volume }, on) {
+export function createRange(canvas, { sens, motion, volume, disc }, on) {
   const renderer = new WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.autoClear = false;
@@ -263,6 +279,8 @@ export function createRange(canvas, { sens, motion, volume }, on) {
   // ---- targets ----
   const angR = Math.atan(RADIUS / DIST) / RAD;
   const gap = motion === 'drift' ? 6 : 3;
+  const orbTex = orbTexture(...discShades(disc), 'rgba(255,255,255,0.85)');
+  const wrongTex = orbTexture('#7a2438', '#2c0c16', '#ff5f78'); // a wrong pick goes dark red, whatever the disc colour
   let targets = [];
   const parts = [];
   const HOLD = { wrong: 900, correct: 0, clear: 0 };
@@ -273,8 +291,9 @@ export function createRange(canvas, { sens, motion, volume }, on) {
     t.alive = false;
     t.end = { how, at: performance.now() };
     if (how === 'wrong') {
-      t.sprite.material.map.dispose();
-      t.sprite.material.map = discTexture(t.reveal, true);
+      t.orb.material.map = wrongTex;
+      t.label.material.map.dispose();
+      t.label.material.map = labelTexture(t.reveal);
     }
   }
 
@@ -287,10 +306,14 @@ export function createRange(canvas, { sens, motion, volume }, on) {
       const { yaw, pitch } = spots[i];
       const dir = new Vector3(-Math.sin(yaw * RAD) * Math.cos(pitch * RAD), Math.sin(pitch * RAD), -Math.cos(yaw * RAD) * Math.cos(pitch * RAD));
       const base = new Vector3(0, EYE, 0).addScaledVector(dir, DIST + (Math.random() * 2 - 1));
-      const sprite = new Sprite(new SpriteMaterial({ map: discTexture(item.face, false), transparent: true, depthWrite: false }));
-      sprite.position.copy(base);
-      scene.add(sprite);
-      targets.push({ ...item, sprite, base, alive: true, born: clock, k: 1, phase: Math.random() * 6.28, end: null });
+      const orb = new Sprite(new SpriteMaterial({ map: orbTex, transparent: true, depthWrite: false }));
+      const label = new Sprite(new SpriteMaterial({ map: labelTexture(item.face), transparent: true, depthWrite: false }));
+      label.renderOrder = 1; // the word draws over its orb
+      const group = new Group(); // drifting moves the orb and its word together
+      group.position.copy(base);
+      group.add(orb, label);
+      scene.add(group);
+      targets.push({ ...item, group, orb, label, base, alive: true, born: clock, k: 1, phase: Math.random() * 6.28, end: null });
     });
   }
 
@@ -298,28 +321,30 @@ export function createRange(canvas, { sens, motion, volume }, on) {
     const t = now / 1000;
     let expired = false;
     targets = targets.filter((tg) => {
-      const s = tg.sprite;
       const age = clock - tg.born;
       if (tg.alive) {
-        tg.k = Math.sqrt(Math.max(0, 1 - age / LIFE_MS)); // radius left: the disc's area shrinks linearly to nothing
+        tg.k = Math.sqrt(Math.max(0, 1 - age / LIFE_MS)); // radius left: the orb's area shrinks linearly to nothing
         if (age >= LIFE_MS) { retire(tg, 'clear'); expired = true; }
       }
-      if (motion === 'drift' && tg.alive) s.position.set(tg.base.x + Math.sin(t * 0.8 + tg.phase) * 0.6, tg.base.y + Math.sin(t * 1.3 + tg.phase * 1.7) * 0.3, tg.base.z);
-      let scale = Math.min(1, 0.6 + age / 300) * tg.k;
+      if (motion === 'drift' && tg.alive) tg.group.position.set(tg.base.x + Math.sin(t * 0.8 + tg.phase) * 0.6, tg.base.y + Math.sin(t * 1.3 + tg.phase * 1.7) * 0.3, tg.base.z);
+      const grow = Math.min(1, 0.6 + age / 300);
+      let swell = 1;
       let opacity = 1;
       if (tg.end) {
         const f = Math.max(0, now - tg.end.at - HOLD[tg.end.how]) / FADE[tg.end.how];
         if (f >= 1) {
-          scene.remove(s);
-          s.material.map.dispose();
-          s.material.dispose();
+          scene.remove(tg.group);
+          tg.label.material.map.dispose(); // the orb textures are shared: destroy() frees them
+          tg.label.material.dispose();
+          tg.orb.material.dispose();
           return false;
         }
         opacity = 1 - f;
-        if (tg.end.how === 'correct') scale *= 1 + f * 0.5;
+        if (tg.end.how === 'correct') swell = 1 + f * 0.5; // only the word swells: a swelling orb could dip into the floor
       }
-      s.material.opacity = opacity;
-      s.scale.setScalar(RADIUS * 2 * scale);
+      tg.orb.material.opacity = tg.label.material.opacity = opacity;
+      tg.orb.scale.setScalar(RADIUS * 2 * grow * tg.k);
+      tg.label.scale.setScalar(RADIUS * 2 * grow * swell);
       return true;
     });
     if (expired) on.onExpire();
@@ -408,13 +433,13 @@ export function createRange(canvas, { sens, motion, volume }, on) {
     let nearest = Infinity;
     for (const tg of targets) {
       if (!tg.alive) continue;
-      toTarget.subVectors(tg.sprite.position, camera.position);
+      toTarget.subVectors(tg.group.position, camera.position);
       const along = toTarget.dot(ray);
-      const r = RADIUS * tg.k; // as big as it looks right now
+      const r = RADIUS * tg.k; // the orb as big as it looks right now (its word stays full size, but isn't the target)
       if (along > 0 && along < nearest && toTarget.lengthSq() - along * along <= r * r) { hit = tg; nearest = along; }
     }
     if (hit?.correct) {
-      burst(hit.sprite.position, 0x34d399);
+      burst(hit.group.position, 0x34d399);
       retire(hit, 'correct');
       for (const tg of targets) if (tg.alive) retire(tg, 'clear');
       sounds.hit();
@@ -487,6 +512,8 @@ export function createRange(canvas, { sens, motion, volume }, on) {
     scene.traverse(free);
     vmScene.traverse(free);
     dot.dispose();
+    orbTex.dispose();
+    wrongTex.dispose();
     renderer.dispose();
     sounds.close();
   }

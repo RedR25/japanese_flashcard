@@ -2,8 +2,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  CS2_VFOV, GAP, LIFE_MS, SIDES, VM_VFOV, buildQueue, cmPer360, fixTo, hintFor, hitPoints, nextPrompt, pairAllowed, pairName, pickOptions,
-  placeTargets, usable,
+  CS2_VFOV, GAP, LIFE_MS, SIDES, VM_VFOV, buildQueue, cmPer360, discShades, fixTo, hintFor, hitPoints, nextPrompt, pairAllowed, pairName,
+  pickOptions, placeTargets, usable,
 } from './logic.js';
 
 const seeded = (seed) => () => (seed = (seed * 16807) % 2147483647) / 2147483647;
@@ -139,9 +139,15 @@ test('targets spread out and never overlap', () => {
       const spots = placeTargets(6, radius, gap, seeded(s));
       assert.ok(spots.length >= 5, `radius ${radius} gap ${gap} seed ${s}: only ${spots.length} spots`);
       for (const a of spots) {
-        assert.ok(Math.abs(a.yaw) <= 40 && a.pitch >= -8 && a.pitch <= 18);
+        assert.ok(Math.abs(a.yaw) <= 40 && a.pitch >= 0 && a.pitch <= 20, 'never low enough to sink into the floor');
         for (const b of spots) if (a !== b) assert.ok(Math.hypot(a.yaw - b.yaw, a.pitch - b.pitch) >= 2 * radius + gap);
       }
     }
   }
+});
+
+test('disc colour: a light centre, a darker edge, seal red when unset or invalid', () => {
+  assert.deepEqual(discShades('#ff5f78'), ['#ffa7b5', '#d95166']);
+  assert.deepEqual(discShades('#000000'), ['#737373', '#000000']);
+  for (const bad of [undefined, '', 'red', '#fff', '#12345g']) assert.deepEqual(discShades(bad), discShades('#ff5f78'), String(bad));
 });

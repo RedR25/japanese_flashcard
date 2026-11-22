@@ -68,7 +68,7 @@ export const pickOptions = ({ word, from, to }, words, n, rand = Math.random) =>
 // Discs shrink away over LIFE_MS (their area falls linearly), and a clean hit scores the share that's left: up to 100
 // on drifting discs, STILL of that on still ones. After a wrong shot the word scores nothing; a wrong shot or a disc
 // left to vanish costs PENALTY either way.
-export const LIFE_MS = 5000;
+export const LIFE_MS = 8000; // 5 s went by too fast to read the words
 export const PENALTY = 50;
 export const STILL = 0.85;
 export const hitPoints = (ms, missed, still = false) => (missed ? 0 : Math.max(1, Math.round(100 * (1 - ms / LIFE_MS) * (still ? STILL : 1))));
@@ -84,15 +84,25 @@ export const CS2_VFOV = 2 * deg(Math.atan(Math.tan(Math.PI / 4) * 0.75));
 // The gun uses CS2's default viewmodel FOV, 68 (also 4:3-wide), so 53.7° tall.
 export const VM_VFOV = 2 * deg(Math.atan(Math.tan((68 * Math.PI) / 360) * 0.75));
 
-// Where targets float: yaw ±40°, pitch -8° to 18° (clear of the prompt at the top), never closer than sep°.
+// Where targets float: yaw ±40°, pitch 0° to 20°, never closer than sep°. Discs sit 13-15 m out from a 1.6 m eye, so
+// below about -2.5° part of one sinks into the floor; at 0° its bottom stays ~0.3 m up even while drifting, and 20°
+// keeps its top edge clear of the prompt at the top.
 export const placeTargets = (n, radiusDeg, gapDeg, rand = Math.random) => {
   const sep = 2 * radiusDeg + gapDeg;
   const spots = [];
   for (let tries = 0; spots.length < n && tries < 600; tries++) {
-    const spot = { yaw: (rand() * 2 - 1) * 40, pitch: -8 + rand() * 26 };
+    const spot = { yaw: (rand() * 2 - 1) * 40, pitch: rand() * 20 };
     if (spots.every((s) => Math.hypot(s.yaw - spot.yaw, s.pitch - spot.pitch) >= sep)) spots.push(spot);
   }
   return spots;
+};
+
+// The disc colour picked in the lobby (#rrggbb; anything else is seal red) as the orb's shading: a light centre (45%
+// white) to a darker edge (15% black). The engine paints it, the lobby's preview disc shows it.
+export const discShades = (color) => {
+  const hex = /^#[0-9a-f]{6}$/i.test(color) ? color : '#ff5f78';
+  const mix = (to, f) => `#${[1, 3, 5].map((i) => Math.round(parseInt(hex.slice(i, i + 2), 16) * (1 - f) + to * f).toString(16).padStart(2, '0')).join('')}`;
+  return [mix(255, 0.45), mix(0, 0.15)];
 };
 
 // ---- Leaderboards: the server keeps each member's best per chapter; board = 'level.chapter', e.g. 'hsk1.0' ----

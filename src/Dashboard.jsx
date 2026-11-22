@@ -47,8 +47,10 @@ export function Shell({ here, account, known, lesson, children }) {
 
   return (
     <>
-      <div className="lg:grid lg:min-h-screen lg:grid-cols-[16rem_minmax(0,1fr)] lg:grid-rows-[auto_1fr]">
-        <header className="flex items-center gap-3 px-4 py-4 sm:px-6 lg:col-start-2 lg:row-start-1 lg:mx-auto lg:w-full lg:max-w-6xl lg:px-8 lg:py-6">
+      <div className="lg:grid lg:min-h-screen lg:grid-cols-[16rem_minmax(0,1fr)] lg:grid-rows-[5.75rem_1fr]">
+        {/* The top bar stays put while the page scrolls. A sticky grid item can't leave its own grid area, so on wide
+            screens it spans both rows of its column, and row 1 is exactly its height (py-6 + the h-11 search box). */}
+        <header className="sticky top-0 z-30 flex items-center gap-3 bg-paper/80 px-4 py-4 backdrop-blur-md sm:px-6 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:mx-auto lg:w-full lg:max-w-6xl lg:self-start lg:px-8 lg:py-6">
           <a href="#/" aria-label="Moji dashboard" className="lg:hidden"><Logo /></a>
           <Search />
           {user && <div className="ml-auto shrink-0"><UserMenu account={account} /></div>}

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Trophy } from 'lucide-react';
 import { HINT, PENALTY, RUN_MS, SIDES, buildQueue, cmPer360, getBoards, hintFor, hitPoints, nextPrompt, pairName, pickOptions, postScore } from './logic.js';
+import { crosshairRects } from './crosshair.js';
 
 // The Word Range run: loads the 3D engine (three.js, only now), deals one chapter's words for a minute, draws the HUD.
 const SIDE = Object.fromEntries(SIDES.map((s) => [s.id, s]));
@@ -24,22 +25,27 @@ const loadFonts = (words) => {
   return Promise.all(sets.flatMap(([fam, t]) => [700, 500].map((wt) => document.fonts.load(`${wt} 64px ${fam}`, t)))).catch(() => {});
 };
 
-// CS2-style crosshair: four bars around a gap, optional centre dot and black outline.
+// CS2-style crosshair: four bars around a gap, optional centre dot and black outline. Drawn on a canvas covering the
+// parent in whole device pixels (crosshair.js), so it stays crisp and on the exact centre, where the aim ray is.
 export function Crosshair({ c }) {
-  const len = Math.round(c.size * 2);
-  const th = Math.max(1, Math.round(c.thickness * 2));
-  const gap = Math.round(c.gap + 3);
-  const o = -Math.floor(th / 2);
-  const bar = (key, style) => <span key={key} className="absolute" style={{ background: c.color, outline: c.outline ? '1px solid #000' : 'none', ...style }} />;
-  return (
-    <div aria-hidden className="pointer-events-none absolute left-1/2 top-1/2 h-0 w-0">
-      {bar('r', { left: gap, top: o, width: len, height: th })}
-      {bar('l', { left: -gap - len, top: o, width: len, height: th })}
-      {bar('d', { top: gap, left: o, width: th, height: len })}
-      {bar('u', { top: -gap - len, left: o, width: th, height: len })}
-      {c.dot && bar('dot', { left: o, top: o, width: th, height: th })}
-    </div>
-  );
+  const ref = useRef(null);
+  useEffect(() => { // only in the browser: this also renders on the server in tests
+    const el = ref.current;
+    // The observer reports the size on observe and on every change after, so it does all the drawing: on mount, on
+    // resize, and when new settings re-run this effect.
+    const ro = new ResizeObserver(([e]) => {
+      const dpr = window.devicePixelRatio || 1;
+      const box = e.devicePixelContentBoxSize?.[0]; // the exact device px; clientWidth is rounded CSS px, can be 1 off
+      el.width = box ? box.inlineSize : Math.round(el.clientWidth * dpr); // setting the size also clears the canvas
+      el.height = box ? box.blockSize : Math.round(el.clientHeight * dpr);
+      const ctx = el.getContext('2d');
+      for (const r of crosshairRects(el.width, el.height, c, dpr)) { ctx.fillStyle = r.fill; ctx.fillRect(r.x, r.y, r.w, r.h); }
+    });
+    // The device-pixel box also fires when only the DPR changes (window moved to another monitor, zoom). Safari lacks it.
+    try { ro.observe(el, { box: 'device-pixel-content-box' }); } catch { ro.observe(el); }
+    return () => ro.disconnect();
+  }, [c]);
+  return <canvas ref={ref} aria-hidden className="pointer-events-none absolute inset-0 h-full w-full" />;
 }
 
 // A leaderboard: the top 10 (ties share a rank) with your row highlighted, and your row underneath when you're further

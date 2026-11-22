@@ -3,7 +3,7 @@ import { ArrowLeftRight, Crosshair as CrosshairIcon, MousePointer2, Plus, Target
 import hsk1 from './data/range/hsk1.js';
 import n5 from './data/range/n5.js';
 import Game, { Boards, Crosshair } from './range/Game.jsx';
-import { GAP, SIDES, STILL, cmPer360, fixTo, getBoards, pairAllowed, pairName, usable } from './range/logic.js';
+import { GAP, SIDES, STILL, cmPer360, discShades, fixTo, getBoards, pairAllowed, pairName, usable } from './range/logic.js';
 
 // Word Range lobby: pick a level, a chapter, how words are shown (Show → Shoot) or a mix of pairs, and the aim
 // settings, with the leaderboards in a rail down the right. Launch opens the 3D range (range/Game.jsx).
@@ -18,18 +18,20 @@ const LANG_ATTR = { zh: 'zh-Hans', ja: 'ja', kana: 'ja', vi: 'vi' };
 
 // Aim settings. sens and dpi stay as typed (strings) so decimals type cleanly, and are parsed when used. Disc size and
 // ammo aren't settings: every run has medium discs and ammo that never runs out.
-const AIM = { sens: '1', dpi: '800', targets: 4, motion: 'still', volume: 0.6, xhair: { color: '#34d399', size: 4, gap: 1, thickness: 1, dot: false, outline: true } };
+const AIM = { sens: '1', dpi: '800', targets: 4, motion: 'still', volume: 0.6, disc: '#ff5f78', xhair: { color: '#34d399', size: 4, gap: 1, thickness: 1, dot: false, outline: true } };
 const COLORS = ['#34d399', '#22d3ee', '#facc15', '#ffffff', '#ff5f78'];
+const DISCS = ['#ff5f78', '#f97316', '#facc15', '#34d399', '#22d3ee', '#a78bfa'];
 const num = (v, fallback, lo, hi) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? Math.min(hi, Math.max(lo, n)) : fallback; };
 const field = 'h-10 w-full rounded-xl border border-white/10 bg-black/20 px-3 text-sm tabular-nums text-ink outline-none transition focus:border-white/25';
-// The crosshair preview: the range's gridded wall with a word disc, so you see the crosshair against both.
+// The crosshair preview: the range's gridded wall with a word disc in your disc colour, so you see the crosshair
+// against both.
 const WALL = {
   backgroundColor: '#0d0f16',
   backgroundImage: 'linear-gradient(rgb(255 255 255 / 0.05) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.05) 1px, transparent 1px)',
   backgroundSize: '16px 16px',
   backgroundPosition: 'center',
 };
-const DISC = { background: 'radial-gradient(circle at 36% 30%, #ff9cad, #d8385a 72%)' };
+const disc = (color) => { const [light, dark] = discShades(color); return { background: `radial-gradient(circle at 36% 30%, ${light}, ${dark} 72%)` }; };
 
 const KEY = 'moji.range';
 const store = {
@@ -220,6 +222,17 @@ export default function Range() {
                 </div>
               </div>
             ))}
+            <div role="group" aria-label="Disc colour" className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs text-muted">Disc colour</span>
+              <div className="flex flex-wrap items-center gap-2">
+                {DISCS.map((c) => (
+                  <button key={c} onClick={() => setAim({ disc: c })} aria-label={`Disc colour ${c}`} aria-pressed={s.aim.disc === c}
+                    className={`h-6 w-6 rounded-full border-2 transition ${s.aim.disc === c ? 'border-white' : 'border-transparent hover:border-white/40'}`} style={{ background: c }} />
+                ))}
+                <input type="color" value={s.aim.disc} onChange={(e) => setAim({ disc: e.target.value })} aria-label="Any disc colour" title="Any colour"
+                  className="h-6 w-8 cursor-pointer rounded-md border border-white/10 bg-transparent" />
+              </div>
+            </div>
             <p className="text-xs leading-relaxed text-muted/80">
               Drifting discs score full points, still ones {Math.round(STILL * 100)}%. Every run has medium discs and ammo that never runs out.
             </p>
@@ -233,7 +246,7 @@ export default function Range() {
           <Box icon={<CrosshairIcon size={14} aria-hidden />} title="Crosshair" className="md:col-span-2">
             <div className="grid gap-4 sm:grid-cols-[13rem_minmax(0,1fr)] sm:items-center">
               <div className="relative h-40 overflow-hidden rounded-xl border border-white/10" style={WALL}>
-                <span aria-hidden className="absolute left-[calc(50%-1.25rem)] top-1/2 h-24 w-24 -translate-y-1/2 rounded-full ring-2 ring-white/80" style={DISC} />
+                <span aria-hidden className="absolute left-[calc(50%-1.25rem)] top-1/2 h-24 w-24 -translate-y-1/2 rounded-full ring-2 ring-white/80" style={disc(s.aim.disc)} />
                 <Crosshair c={s.aim.xhair} />
               </div>
               <div className="grid gap-3 text-sm">
@@ -275,7 +288,7 @@ export default function Range() {
       </div>
 
       {/* A quarter of the screen down the right, full height, staying put while the lobby scrolls (below it on narrower screens). */}
-      <aside aria-label="Leaderboards" className="mx-auto mt-12 max-w-3xl rounded-3xl border border-white/[0.06] bg-card/60 p-5 xl:sticky xl:top-6 xl:mx-0 xl:mt-0 xl:h-[calc(100vh-3rem)] xl:max-w-none xl:overflow-y-auto xl:pb-20">
+      <aside aria-label="Leaderboards" className="mx-auto mt-12 max-w-3xl rounded-3xl border border-white/[0.06] bg-card/60 p-5 xl:sticky xl:top-[6.5rem] xl:mx-0 xl:mt-0 xl:h-[calc(100vh-8rem)] xl:max-w-none xl:overflow-y-auto xl:pb-20">
         <Boards title={`${level.title} · ${chapter.title}`} chapter={boards?.off ? null : boards?.board === board ? boards.chapter : undefined} total={boards?.off ? null : boards?.total} />
       </aside>
     </div>
