@@ -1,10 +1,10 @@
 // Word Range 3D: a dark grid room, floating word discs and a suppressed pistol. This file only renders, aims and
 // shoots; Game.jsx decides which words appear and how they score (rules in logic.js).
 import {
-  AdditiveBlending, AmbientLight, BackSide, BoxGeometry, CanvasTexture, Color, CylinderGeometry, DirectionalLight,
-  Fog, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, PerspectiveCamera, RepeatWrapping, Scene, Sprite,
-  SpriteMaterial, SRGBColorSpace, Vector3, WebGLRenderer,
+  AdditiveBlending, BackSide, BoxGeometry, CanvasTexture, Color, Fog, Group, Mesh, MeshBasicMaterial, PerspectiveCamera,
+  RepeatWrapping, Scene, Sprite, SpriteMaterial, SRGBColorSpace, Vector3, WebGLRenderer,
 } from 'three';
+import { buildGun, lightViewmodel } from './gun.js';
 import { CS2_VFOV, LIFE_MS, VM_VFOV, YAW, discShades, placeTargets } from './logic.js';
 
 const RAD = Math.PI / 180;
@@ -144,39 +144,6 @@ function dotTexture() {
   return toTexture(c);
 }
 
-// An original low-poly suppressed pistol (USP-S-like silhouette: long can, raked grip) with seal-red grip panels.
-function buildGun() {
-  const steel = new MeshStandardMaterial({ color: 0x24262d, roughness: 0.42, metalness: 0.55 });
-  const frame = new MeshStandardMaterial({ color: 0x30333b, roughness: 0.7, metalness: 0.2 });
-  const panel = new MeshStandardMaterial({ color: 0xff5f78, roughness: 0.6, metalness: 0.05 });
-  const gun = new Group();
-  const slide = new Group();
-  gun.add(slide);
-  const box = (parent, [w, h, d], mat, [x, y, z], rx = 0) => {
-    const m = new Mesh(new BoxGeometry(w, h, d), mat);
-    m.position.set(x, y, z);
-    m.rotation.x = rx;
-    parent.add(m);
-  };
-  box(slide, [0.034, 0.034, 0.2], steel, [0, 0.02, -0.03]);
-  box(slide, [0.007, 0.008, 0.012], steel, [0, 0.041, 0.06]); // rear sight
-  box(slide, [0.004, 0.008, 0.008], steel, [0, 0.041, -0.12]); // front sight
-  box(gun, [0.03, 0.02, 0.17], frame, [0, -0.005, -0.02]);
-  box(gun, [0.008, 0.026, 0.05], frame, [0, -0.026, -0.04]); // trigger guard
-  box(gun, [0.029, 0.118, 0.048], frame, [0, -0.07, 0.045], -0.3); // raked grip
-  box(gun, [0.032, 0.08, 0.034], panel, [0, -0.072, 0.047], -0.3);
-  const tube = (r, len, z) => {
-    const m = new Mesh(new CylinderGeometry(r, r, len, 24), steel);
-    m.rotation.x = Math.PI / 2;
-    m.position.set(0, 0.02, z);
-    gun.add(m);
-  };
-  tube(0.0155, 0.17, -0.215); // suppressor
-  tube(0.0168, 0.01, -0.145);
-  tube(0.0168, 0.01, -0.29);
-  return { gun, slide, muzzle: new Vector3(0, 0.02, -0.305) };
-}
-
 // Shot and hit sounds synthesised with WebAudio (no recorded game audio).
 function makeSounds(volume) {
   const AC = window.AudioContext || window.webkitAudioContext;
@@ -262,13 +229,8 @@ export function createRange(canvas, { sens, motion, volume, disc }, on) {
   // The gun lives in its own scene and camera, drawn after the world with a cleared depth buffer, so it never clips.
   const vmScene = new Scene();
   const vmCamera = new PerspectiveCamera(VM_VFOV, 1, 0.01, 10);
-  vmScene.add(new AmbientLight(0xffffff, 0.9));
-  const key = new DirectionalLight(0xffffff, 2.4);
-  key.position.set(-1, 2, 1.5);
-  const rim = new DirectionalLight(0xff5f78, 1.2);
-  rim.position.set(2, 0.5, -1);
-  vmScene.add(key, rim);
-  const { gun, slide, muzzle } = buildGun();
+  const unlight = lightViewmodel(vmScene, renderer); // room reflections for the metal, a key and a cool fill (gun.js)
+  const { gun, slide, muzzle } = buildGun(); // a real-size suppressed USP Tactical (gun.js)
   const REST = { x: 0.115, y: -0.11, z: -0.3, yaw: 0.06 };
   vmScene.add(gun);
   const flash = new Sprite(new SpriteMaterial({ map: dot, color: 0xffd9b0, transparent: true, opacity: 0, blending: AdditiveBlending, depthWrite: false }));
@@ -511,6 +473,7 @@ export function createRange(canvas, { sens, motion, volume, disc }, on) {
     };
     scene.traverse(free);
     vmScene.traverse(free);
+    unlight();
     dot.dispose();
     orbTex.dispose();
     wrongTex.dispose();
