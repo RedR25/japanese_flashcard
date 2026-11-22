@@ -65,11 +65,13 @@ export const pickOptions = ({ word, from, to }, words, n, rand = Math.random) =>
   return shuffle([word, ...others.slice(0, n - 1)], rand);
 };
 
-// Discs shrink away over LIFE_MS (their area falls linearly), and a clean hit scores the share that's left, up to 100.
-// After a wrong shot the word scores nothing; a wrong shot or a disc left to vanish costs PENALTY.
+// Discs shrink away over LIFE_MS (their area falls linearly), and a clean hit scores the share that's left: up to 100
+// on drifting discs, STILL of that on still ones. After a wrong shot the word scores nothing; a wrong shot or a disc
+// left to vanish costs PENALTY either way.
 export const LIFE_MS = 5000;
 export const PENALTY = 50;
-export const hitPoints = (ms, missed) => (missed ? 0 : Math.max(1, Math.round(100 * (1 - ms / LIFE_MS))));
+export const STILL = 0.85;
+export const hitPoints = (ms, missed, still = false) => (missed ? 0 : Math.max(1, Math.round(100 * (1 - ms / LIFE_MS) * (still ? STILL : 1))));
 
 // ---- Aim, matched to CS2 ----
 

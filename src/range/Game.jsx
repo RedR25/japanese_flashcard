@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
+import { Trophy } from 'lucide-react';
 import { HINT, PENALTY, RUN_MS, SIDES, buildQueue, cmPer360, getBoards, hintFor, hitPoints, nextPrompt, pairName, pickOptions, postScore } from './logic.js';
 
 // The Word Range run: loads the 3D engine (three.js, only now), deals one chapter's words for a minute, draws the HUD.
 const SIDE = Object.fromEntries(SIDES.map((s) => [s.id, s]));
 const FONT = { zh: 'font-zh', ja: 'font-ja', kana: 'font-ja' };
 const LANG = { zh: 'zh-Hans', ja: 'ja', kana: 'ja', vi: 'vi' };
-const MAG = 12;
 const chromium = () => Boolean(navigator.userAgentData?.brands?.some((b) => /Chromium/.test(b.brand)));
 
 // A disc shows the word on the shoot side, plus its reading when that doesn't give the answer away.
@@ -44,6 +44,7 @@ export function Crosshair({ c }) {
 
 // A leaderboard: the top 10 (ties share a rank) with your row highlighted, and your row underneath when you're further
 // down. rows: undefined while loading, null when the server can't be reached.
+const MEDAL = { 1: 'text-amber-300', 2: 'text-zinc-300', 3: 'text-orange-400' };
 export function Leaderboard({ rows, empty, modes = false }) {
   const note = (text) => <p className="py-4 text-center text-sm text-white/50">{text}</p>;
   if (rows === undefined) return note('Loading…');
@@ -53,7 +54,7 @@ export function Leaderboard({ rows, empty, modes = false }) {
     <ol className="grid gap-1">
       {rows.map((r, i) => (
         <li key={i} className={`flex items-center gap-3 rounded-xl px-3 py-1.5 ${r.me ? 'bg-seal/15 ring-1 ring-inset ring-seal/40' : 'bg-white/[0.03]'} ${r.rank > 10 ? 'mt-2' : ''}`}>
-          <span className="w-5 shrink-0 text-right text-xs tabular-nums text-white/50">{r.rank}</span>
+          <span className={`w-5 shrink-0 text-right text-xs font-semibold tabular-nums ${MEDAL[r.rank] || 'text-white/50'}`}>{r.rank}</span>
           {r.picture
             ? <img src={r.picture} alt="" referrerPolicy="no-referrer" loading="lazy" className="h-6 w-6 shrink-0 rounded-full" />
             : <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-seal text-[10px] font-bold text-white">{(r.name || '?')[0].toUpperCase()}</span>}
@@ -65,6 +66,24 @@ export function Leaderboard({ rows, empty, modes = false }) {
         </li>
       ))}
     </ol>
+  );
+}
+
+// The chapter's board above the all-chapter total: the lobby's right rail, and the side panel after a run.
+export function Boards({ title, chapter, total }) {
+  const head = (name, sub) => (
+    <p className="mb-2.5 flex items-baseline gap-2 text-xs">
+      <span className="shrink-0 font-semibold uppercase tracking-[0.18em] text-white/55">{name}</span>
+      <span className="truncate text-white/40">{sub}</span>
+    </p>
+  );
+  return (
+    <div className="grid gap-7">
+      <h2 className="flex items-center gap-2 text-sm font-semibold"><Trophy size={16} className="text-seal" />Leaderboards</h2>
+      <section>{head('Chapter', title)}<Leaderboard rows={chapter} modes empty="No scores yet. Set the first one." /></section>
+      <section>{head('Total', 'every chapter’s best, added up')}<Leaderboard rows={total} empty="No scores yet." /></section>
+      <p className="text-xs leading-relaxed text-white/40">Your best per chapter counts, whatever pair you play. Moji members see your name and photo here.</p>
+    </div>
   );
 }
 
@@ -81,7 +100,6 @@ export default function Game({ run, onAgain, onExit }) {
   const [phase, setPhase] = useState('loading'); // loading | ready | play | paused | done | error
   const [, setTick] = useState(0);
   const bump = () => setTick((t) => t + 1);
-  const [ammo, setAmmo] = useState({ n: MAG, reloading: false });
   const [pop, setPop] = useState(null);
   const [raw, setRaw] = useState(null);
   const [lockFailed, setLockFailed] = useState(false);
@@ -89,6 +107,7 @@ export default function Game({ run, onAgain, onExit }) {
   const [board, setBoard] = useState(); // the server's reply after the run: undefined while saving, null if unreachable
   const [error, setError] = useState('');
   const { aim } = run;
+  const still = aim.motion !== 'drift'; // still discs score STILL of a drifting hit
   const played = () => eng.current.time() - st.current.start; // ms of play so far (Esc stops the engine's clock)
 
   const finish = () => {
@@ -134,7 +153,7 @@ export default function Game({ run, onAgain, onExit }) {
       if (played() >= RUN_MS) { finish(); return; } // the buzzer beat this click
       s.shots++;
       if (hit?.correct) {
-        const pts = hitPoints(hit.ms, s.miss);
+        const pts = hitPoints(hit.ms, s.miss, still);
         s.score += pts;
         s.hits++;
         s.cleared++;
@@ -177,7 +196,6 @@ export default function Game({ run, onAgain, onExit }) {
         }
       } else if (s && !s.over) setPhase('paused');
     },
-    onAmmo: (n, reloading) => setAmmo({ n, reloading }),
     onLockError: () => setLockFailed(true),
   };
 
@@ -190,7 +208,6 @@ export default function Game({ run, onAgain, onExit }) {
           onShot: (h) => handlers.current.onShot(h),
           onExpire: () => handlers.current.onExpire(),
           onLock: (l, r) => handlers.current.onLock(l, r),
-          onAmmo: (n, r) => handlers.current.onAmmo(n, r),
           onLockError: () => handlers.current.onLockError(),
         });
         setPhase('ready');
@@ -210,15 +227,6 @@ export default function Game({ run, onAgain, onExit }) {
   const left = s && eng.current ? Math.max(0, RUN_MS - played()) : RUN_MS;
   const hint = s?.item && run.hints ? hintFor(s.item.word, s.item.from, s.item.to) : null;
   const noRaw = raw === false || (raw === null && !chromium());
-  const newBest = result?.score > 0 && board && (board.prev == null || result.score > board.prev);
-  const me = board?.total?.find((r) => r.me);
-  const verdict = () => {
-    if (!result.score) return 'No points this time.';
-    if (board === undefined) return 'Saving…';
-    if (board === null) return 'Couldn’t reach the leaderboard, so this score wasn’t saved.';
-    if (board.prev == null) return 'First score on this chapter';
-    return newBest ? `New best! (was ${board.prev.toLocaleString()})` : `Your best: ${board.prev.toLocaleString()}`;
-  };
 
   return (
     <div className="fixed inset-0 z-50 select-none overflow-hidden bg-[#090a10] text-ink">
@@ -244,10 +252,6 @@ export default function Game({ run, onAgain, onExit }) {
                 : hint && <Say side={HINT[shown.from]} className="mt-1 text-lg text-white/75">{hint}</Say>}
             </div>
           )}
-          <div className="absolute bottom-5 right-6 text-right">
-            <p className="text-3xl font-semibold tabular-nums">{aim.infinite ? '∞' : `${ammo.n} / ${MAG}`}</p>
-            <p className="text-xs text-white/60">{ammo.reloading ? 'Reloading…' : aim.infinite ? 'Infinite ammo' : 'R to reload'}</p>
-          </div>
           {phase === 'play' && <Crosshair c={aim.xhair} />}
           {phase === 'play' && pop && (
             <span key={pop.key} className={`range-pop absolute left-1/2 top-[calc(50%+20px)] whitespace-nowrap text-lg font-bold ${pop.good ? 'text-jade' : 'text-seal'}`}>{pop.text}</span>
@@ -267,11 +271,12 @@ export default function Game({ run, onAgain, onExit }) {
               </span>
               {phase === 'ready' && (
                 <span className="mt-3 block text-xs leading-relaxed text-white/60">
-                  You have 1 minute. Discs shrink as time passes: hit the right one fast for up to 100. A wrong word or a disc you let vanish costs {PENALTY}.
+                  You have 1 minute. Discs shrink as time passes: hit the right one fast for up to {hitPoints(0, false, still)}
+                  {still && ' (100 when they drift)'}. A wrong word or a disc you let vanish costs {PENALTY}.
                 </span>
               )}
               <span className="mt-4 block text-xs text-white/45">
-                Esc pauses · R reloads · CS2 sens {aim.sens} at {aim.dpi} DPI = {cmPer360(aim.sens, aim.dpi).toFixed(1)} cm/360°
+                Esc pauses · CS2 sens {aim.sens} at {aim.dpi} DPI = {cmPer360(aim.sens, aim.dpi).toFixed(1)} cm/360°
               </span>
             </button>
             {noRaw && (
@@ -294,9 +299,27 @@ export default function Game({ run, onAgain, onExit }) {
         </Panel>
       )}
 
-      {phase === 'done' && result && (
-        <Panel>
-          <div className="max-h-full w-full max-w-md overflow-y-auto rounded-3xl border border-white/10 bg-[#141416] p-6">
+      {phase === 'done' && result && <Results run={run} result={result} board={board} onAgain={onAgain} onExit={onExit} />}
+    </div>
+  );
+}
+
+// After the buzzer: how the run went in the middle, both leaderboards in a panel down the right (below, on narrow
+// windows). board: the server's reply, undefined while saving, null if it couldn't be reached.
+export function Results({ run, result, board, onAgain, onExit }) {
+  const newBest = result.score > 0 && board && (board.prev == null || result.score > board.prev);
+  const verdict = () => {
+    if (!result.score) return 'No points this time.';
+    if (board === undefined) return 'Saving…';
+    if (board === null) return 'Couldn’t reach the leaderboard, so this score wasn’t saved.';
+    if (board.prev == null) return 'First score on this chapter';
+    return newBest ? `New best! (was ${board.prev.toLocaleString()})` : `Your best: ${board.prev.toLocaleString()}`;
+  };
+  return (
+    <div className="absolute inset-0 overflow-y-auto bg-black/60 backdrop-blur-md lg:flex lg:overflow-hidden">
+      <div className="lg:flex-1 lg:overflow-y-auto">
+        <div className="grid min-h-full place-items-center p-6">
+          <div className="w-full max-w-md rounded-3xl border border-white/10 bg-[#141416] p-6">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/50">{run.title}</p>
             <p className="mt-1 text-4xl font-semibold tabular-nums">{result.score.toLocaleString()}</p>
             <p className={`text-sm ${newBest ? 'text-jade' : 'text-white/60'}`}>{verdict()}</p>
@@ -308,9 +331,6 @@ export default function Game({ run, onAgain, onExit }) {
                 </div>
               ))}
             </dl>
-            <h3 className="mb-2 mt-6 text-xs font-semibold uppercase tracking-[0.18em] text-white/50">Chapter leaderboard</h3>
-            <Leaderboard rows={board === null ? null : board?.chapter} modes empty="No scores on this chapter yet." />
-            {me && <p className="mt-2 text-xs tabular-nums text-white/60">Your total across all chapters: {me.score.toLocaleString()} · #{me.rank}</p>}
             {result.missed.length > 0 && (
               <>
                 <h3 className="mt-6 text-xs font-semibold uppercase tracking-[0.18em] text-white/50">Words you missed</h3>
@@ -329,8 +349,11 @@ export default function Game({ run, onAgain, onExit }) {
               <button onClick={onExit} className="flex-1 rounded-full border border-white/15 py-3 text-sm font-semibold transition hover:bg-white/5">Lobby</button>
             </div>
           </div>
-        </Panel>
-      )}
+        </div>
+      </div>
+      <aside aria-label="Leaderboards" className="border-t border-white/10 bg-[#0e0f15]/95 p-6 lg:w-1/4 lg:min-w-[20rem] lg:shrink-0 lg:overflow-y-auto lg:border-l lg:border-t-0">
+        <Boards title={run.title} chapter={board === null ? null : board?.chapter} total={board === null ? null : board?.total} />
+      </aside>
     </div>
   );
 }

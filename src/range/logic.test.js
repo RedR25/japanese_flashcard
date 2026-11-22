@@ -123,6 +123,9 @@ test('scoring and CS2 aim maths', () => {
   assert.ok(hitPoints(1000, false) > hitPoints(2000, false), 'faster scores more');
   assert.equal(hitPoints(LIFE_MS - 1, false), 1, 'a last-moment hit still counts');
   assert.equal(hitPoints(200, true), 0, 'nothing after a wrong shot');
+  assert.equal(hitPoints(0, false, true), 85, 'still discs: 0.85 of drifting');
+  assert.equal(hitPoints(LIFE_MS / 2, false, true), 43);
+  assert.equal(hitPoints(200, true, true), 0);
   assert.equal(pairName('zh>en'), '中文 → English');
   assert.equal(pairName('mix'), 'Mix');
   assert.ok(Math.abs(cmPer360(1.25, 800) - 41.56) < 0.01, 'sens 1.25 at 800 DPI is 41.56 cm/360');
@@ -131,7 +134,7 @@ test('scoring and CS2 aim maths', () => {
 });
 
 test('targets spread out and never overlap', () => {
-  for (const [radius, gap] of [[4.09, 3], [4.09, 6], [5.3, 6]]) {
+  for (const [radius, gap] of [[4.09, 3], [4.09, 6]]) { // a 1 m disc at 14 m, still and drifting
     for (let s = 1; s < 40; s++) {
       const spots = placeTargets(6, radius, gap, seeded(s));
       assert.ok(spots.length >= 5, `radius ${radius} gap ${gap} seed ${s}: only ${spots.length} spots`);

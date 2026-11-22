@@ -11,10 +11,8 @@ const RAD = Math.PI / 180;
 const EYE = 1.6;
 const ROOM = { w: 72, h: 24, d: 72 };
 const DIST = 14; // metres to the targets
-const FIRE_MS = 170; // like tapping a USP-S: clicking faster doesn't fire faster
-const MAG = 12;
-const RELOAD_MS = 2200;
-const SIZES = { s: 0.75, m: 1, l: 1.3 }; // disc radius in metres
+const FIRE_MS = 170; // like tapping a USP-S: clicking faster doesn't fire faster (ammo never runs out)
+const RADIUS = 1; // disc radius in metres
 const FAMILY = { zh: '"Noto Serif SC", serif', ja: '"Noto Serif JP", serif', kana: '"Noto Serif JP", serif' };
 const family = (side) => FAMILY[side] || 'Inter, system-ui, sans-serif';
 
@@ -163,10 +161,10 @@ function buildGun() {
   return { gun, slide, muzzle: new Vector3(0, 0.02, -0.305) };
 }
 
-// Shot, hit and reload sounds synthesised with WebAudio (no recorded game audio).
+// Shot and hit sounds synthesised with WebAudio (no recorded game audio).
 function makeSounds(volume) {
   const AC = window.AudioContext || window.webkitAudioContext;
-  if (!AC) return { resume() {}, shot() {}, hit() {}, wrong() {}, dry() {}, reload() {}, close() {} };
+  if (!AC) return { resume() {}, shot() {}, hit() {}, wrong() {}, close() {} };
   const ctx = new AC();
   const out = ctx.createGain();
   out.gain.value = volume;
@@ -209,14 +207,12 @@ function makeSounds(volume) {
     shot: () => { const t = now(); hiss(t, 1300, 0.8, 0.55, 0.09); tone(t, 'sine', 150, 50, 0.4, 0.1); hiss(t + 0.03, 3600, 3, 0.12, 0.03); },
     hit: () => { const t = now(); tone(t, 'sine', 988, 988, 0.16, 0.16); tone(t + 0.06, 'sine', 1480, 1480, 0.12, 0.22); },
     wrong: () => tone(now(), 'square', 160, 90, 0.06, 0.24),
-    dry: () => hiss(now(), 2600, 5, 0.25, 0.03),
-    reload: () => { const t = now(); hiss(t + 0.3, 1700, 4, 0.3, 0.04); hiss(t + 1.35, 1400, 4, 0.35, 0.05); hiss(t + 1.9, 2300, 4, 0.35, 0.04); },
     close: () => ctx.close(),
   };
 }
 
-// on: { onShot({ id, correct, ms } | null), onExpire(), onLock(locked, raw), onAmmo(left, reloading), onLockError() }
-export function createRange(canvas, { sens, size, motion, infinite, volume }, on) {
+// on: { onShot({ id, correct, ms } | null), onExpire(), onLock(locked, raw), onLockError() }
+export function createRange(canvas, { sens, motion, volume }, on) {
   const renderer = new WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.autoClear = false;
@@ -265,8 +261,7 @@ export function createRange(canvas, { sens, size, motion, infinite, volume }, on
   gun.add(flash);
 
   // ---- targets ----
-  const radius = SIZES[size] ?? 1;
-  const angR = Math.atan(radius / DIST) / RAD;
+  const angR = Math.atan(RADIUS / DIST) / RAD;
   const gap = motion === 'drift' ? 6 : 3;
   let targets = [];
   const parts = [];
@@ -324,7 +319,7 @@ export function createRange(canvas, { sens, size, motion, infinite, volume }, on
         if (tg.end.how === 'correct') scale *= 1 + f * 0.5;
       }
       s.material.opacity = opacity;
-      s.scale.setScalar(radius * 2 * scale);
+      s.scale.setScalar(RADIUS * 2 * scale);
       return true;
     });
     if (expired) on.onExpire();
@@ -394,28 +389,18 @@ export function createRange(canvas, { sens, size, motion, infinite, volume }, on
   }
 
   // ---- shooting ----
-  let ammo = MAG;
-  let reloadAt = 0;
   let lastShot = 0;
   let kick = 0;
   let slideBack = 0;
-  function reload() {
-    if (infinite || reloadAt || ammo === MAG) return;
-    reloadAt = performance.now();
-    sounds.reload();
-    on.onAmmo(ammo, true);
-  }
   const ray = new Vector3();
   const toTarget = new Vector3();
   function fire() {
     const now = performance.now();
-    if (reloadAt || now - lastShot < FIRE_MS) return;
-    if (!infinite && ammo === 0) { sounds.dry(); reload(); return; }
+    if (now - lastShot < FIRE_MS) return;
     lastShot = now;
     kick = 1;
     slideBack = 1;
     sounds.shot();
-    if (!infinite) { ammo--; on.onAmmo(ammo, false); }
     camera.rotation.set(pitch, yaw, 0); // aim as of this click, not the last frame
     camera.updateMatrixWorld();
     camera.getWorldDirection(ray);
@@ -425,7 +410,7 @@ export function createRange(canvas, { sens, size, motion, infinite, volume }, on
       if (!tg.alive) continue;
       toTarget.subVectors(tg.sprite.position, camera.position);
       const along = toTarget.dot(ray);
-      const r = radius * tg.k; // as big as it looks right now
+      const r = RADIUS * tg.k; // as big as it looks right now
       if (along > 0 && along < nearest && toTarget.lengthSq() - along * along <= r * r) { hit = tg; nearest = along; }
     }
     if (hit?.correct) {
@@ -438,10 +423,8 @@ export function createRange(canvas, { sens, size, motion, infinite, volume }, on
       sounds.wrong();
     }
     on.onShot(hit && { id: hit.id, correct: hit.correct, ms: clock - hit.born });
-    if (!infinite && ammo === 0) reload();
   }
   const onDown = (e) => { if (locked && e.button === 0) fire(); };
-  const onKey = (e) => { if (locked && e.code === 'KeyR' && !e.repeat) reload(); };
 
   // ---- loop ----
   let raf = 0;
@@ -454,20 +437,18 @@ export function createRange(canvas, { sens, size, motion, infinite, volume }, on
     if (locked) clock += Math.min(100, Math.max(0, now - last)); // a long stall (GC, tab switch) can't eat a disc
     last = now;
     camera.rotation.set(pitch, yaw, 0);
-    if (reloadAt && now - reloadAt >= RELOAD_MS) { reloadAt = 0; ammo = MAG; on.onAmmo(ammo, false); }
     updateTargets(now);
     updateParts(dt);
-    // viewmodel: recoil kick, slide blowback, reload dip, and a little lag against mouse movement
+    // viewmodel: recoil kick, slide blowback, and a little lag against mouse movement
     kick = Math.max(0, kick - dt * 8);
     slideBack = Math.max(0, slideBack - dt * 14);
     swayX += (Math.max(-0.012, Math.min(0.012, -moveX * 0.00025)) - swayX) * Math.min(1, dt * 10);
     swayY += (Math.max(-0.01, Math.min(0.01, moveY * 0.00025)) - swayY) * Math.min(1, dt * 10);
     moveX = 0;
     moveY = 0;
-    const dip = reloadAt ? Math.sin(Math.min(1, (now - reloadAt) / RELOAD_MS) * Math.PI) : 0;
     const k = kick * kick;
-    gun.position.set(REST.x + swayX, REST.y + swayY + k * 0.008 - dip * 0.1 + Math.sin(now / 900) * 0.0015, REST.z + k * 0.03);
-    gun.rotation.set(k * 0.16 - dip * 0.55, REST.yaw, dip * 0.35);
+    gun.position.set(REST.x + swayX, REST.y + swayY + k * 0.008 + Math.sin(now / 900) * 0.0015, REST.z + k * 0.03);
+    gun.rotation.set(k * 0.16, REST.yaw, 0);
     slide.position.z = slideBack * slideBack * 0.032;
     flash.material.opacity = Math.max(0, slideBack - 0.75) * 3.2;
     renderer.clear();
@@ -489,7 +470,6 @@ export function createRange(canvas, { sens, size, motion, infinite, volume }, on
   resize();
   document.addEventListener('mousemove', onMove);
   document.addEventListener('pointerlockchange', onLockChange);
-  window.addEventListener('keydown', onKey);
   canvas.addEventListener('mousedown', onDown);
   raf = requestAnimationFrame(frame);
 
@@ -498,7 +478,6 @@ export function createRange(canvas, { sens, size, motion, infinite, volume }, on
     ro.disconnect();
     document.removeEventListener('mousemove', onMove);
     document.removeEventListener('pointerlockchange', onLockChange);
-    window.removeEventListener('keydown', onKey);
     canvas.removeEventListener('mousedown', onDown);
     if (document.pointerLockElement === canvas) document.exitPointerLock();
     const free = (o) => {
