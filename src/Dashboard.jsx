@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowRight, Layers, LayoutDashboard, LayoutGrid, Rocket, Search as SearchIcon, ShieldCheck } from 'lucide-react';
+import { ArrowRight, Crosshair, Layers, LayoutDashboard, LayoutGrid, Rocket, Search as SearchIcon, ShieldCheck } from 'lucide-react';
 import { DECKS, LANGS, fontOf, gradient, langAttr } from './decks';
 import { norm } from './asteroids-logic.js';
 import { UserMenu } from './account';
@@ -63,6 +63,7 @@ export function Shell({ here, account, known, lesson, children }) {
               <span className="ml-auto hidden pl-2 text-xs tabular-nums text-muted lg:block">{pct(count(d.cards, known), d.cards.length)}%</span>))}
             {group('Practice')}
             {link('#/play', 'play', 'Asteroid Shooter', <Rocket size={18} className="shrink-0" />)}
+            {link('#/range', 'range', 'Word Range', <Crosshair size={18} className="shrink-0" />)}
             {user?.isAdmin && group('Admin')}
             {user?.isAdmin && link('#/admin', 'admin', 'Manage access', <ShieldCheck size={18} className="shrink-0" />,
               user.pendingCount > 0 && <span className="ml-auto rounded-full bg-seal px-1.5 text-[11px] font-semibold text-white">{user.pendingCount}</span>)}

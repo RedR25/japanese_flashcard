@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeftRight, Check, Layers, LayoutGrid, Lock, Rocket, RotateCcw, X } from 'lucide-react';
 import { DECKS, READINGS, fontOf, getDeck, langAttr, withReading } from './decks';
 import { AuthDialog, useAccount } from './account';
@@ -7,6 +7,8 @@ import Asteroids from './Asteroids';
 import Admin from './Admin';
 import Dashboard, { Emblem, Panel, Shell } from './Dashboard';
 import { browseLesson, studyLesson } from './lesson';
+
+const Range = lazy(() => import('./Range')); // its word lists (~100 KB) load only when the range is opened
 
 const load = (k, fallback) => {
   try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fallback; } catch { return fallback; }
@@ -64,6 +66,7 @@ export default function App() {
   const deck = route[0] === 'd' && withReading(getDeck(route[1]), reading);
   const play = route[0] === 'play';
   const admin = route[0] === 'admin';
+  const range = route[0] === 'range';
   // Whitelist: only approved accounts get past the landing page. No client ID (local dev) = open.
   const member = account.approved || !account.enabled;
   useEffect(() => { if (deck) save('moji.last', deck.id); }, [deck]); // the dashboard's "Continue" deck
@@ -72,12 +75,13 @@ export default function App() {
   if (account.enabled && !account.ready) { // wait for /api/me so members don't see the landing page flash first
     page = <main className="grid min-h-screen place-items-center"><span className="h-6 w-6 animate-spin rounded-full border-2 border-white/20 border-t-white" aria-label="Loading" /></main>;
   } else if (!member) {
-    page = deck || play || admin ? <Gate account={account} openAuth={setAuth} /> : <Landing known={known} account={account} openAuth={setAuth} />;
+    page = deck || play || range || admin ? <Gate account={account} openAuth={setAuth} /> : <Landing known={known} account={account} openAuth={setAuth} />;
   } else {
     page = (
-      <Shell here={deck ? deck.id : play ? 'play' : admin ? 'admin' : 'home'} account={account} known={known} lesson={lesson}>
+      <Shell here={deck ? deck.id : play ? 'play' : range ? 'range' : admin ? 'admin' : 'home'} account={account} known={known} lesson={lesson}>
         {admin ? <Admin account={account} />
           : play ? <Asteroids key={route[1] || ''} initialDeck={getDeck(route[1])?.id} reading={reading} setReading={chooseReading} />
+          : range ? <Suspense fallback={<div className="grid place-items-center py-24"><span className="h-6 w-6 animate-spin rounded-full border-2 border-white/20 border-t-white" aria-label="Loading" /></div>}><Range /></Suspense>
           : deck ? <DeckView deck={deck} tab={route[2] === 'browse' ? 'browse' : 'study'} known={known} updateKnown={updateKnown}
             reverse={reverse} toggleReverse={toggleReverse} reading={reading} setReading={chooseReading} setLesson={setLesson} />
           : <Dashboard known={known} account={account} last={getDeck(load('moji.last', null)) || DECKS[0]} />}
