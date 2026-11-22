@@ -1,7 +1,11 @@
 // Run: node --test src/range/logic.test.js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { SIDES, fixTo, pairAllowed, usable } from './logic.js';
+import {
+  CS2_VFOV, SIDES, VM_VFOV, buildQueue, cmPer360, fixTo, hintFor, hitPoints, pairAllowed, pickOptions, placeTargets, requeue, usable,
+} from './logic.js';
+
+const seeded = (seed) => () => (seed = (seed * 16807) % 2147483647) / 2147483647;
 import hsk1 from '../data/range/hsk1.js';
 import n5 from '../data/range/n5.js';
 
@@ -41,6 +45,65 @@ test('data: chapters are playable and never repeat a label', () => {
         assert.equal(new Set(texts).size, texts.length, `${name} ${i + 1}: duplicate ${s.id}`);
       }
       assert.ok(usable(c.words, side, 'en').length >= 15, `${name} ${i + 1}: enough words for the default pair`);
+    }
+  }
+});
+
+test('hints never give the answer away', () => {
+  const chi = { zh: '吃', pinyin: 'chī', ja: '食べる', kana: 'たべる', en: 'to eat' };
+  assert.equal(hintFor(chi, 'zh', 'en'), 'chī');
+  assert.equal(hintFor(chi, 'zh', 'pinyin'), null, '中文 → Pinyin: the pinyin is the answer');
+  assert.equal(hintFor(chi, 'ja', 'zh'), 'たべる');
+  assert.equal(hintFor({ ja: 'これ', kana: 'これ' }, 'ja', 'en'), null, 'kana-only word: nothing to add');
+  assert.equal(hintFor(chi, 'en', 'zh'), null);
+});
+
+test('a run asks every usable word once, with a pair it works for', () => {
+  const words = hsk1[0].words;
+  assert.equal(buildQueue(words, [['zh', 'ja']], seeded(1)).length, usable(words, 'zh', 'ja').length);
+  const mix = buildQueue(words, [['zh', 'ja'], ['en', 'zh']], seeded(2));
+  assert.equal(new Set(mix.map((q) => q.word)).size, mix.length);
+  assert.ok(mix.every((q) => usable([q.word], q.from, q.to).length));
+  for (let s = 1; s < 20; s++) {
+    const at = requeue(['a', 'b', 'c', 'd', 'e', 'f'], 'x', seeded(s)).indexOf('x');
+    assert.ok(at >= 3 && at <= 5, `missed word comes back 3-5 later, got ${at}`);
+  }
+  assert.deepEqual(requeue(['a'], 'x', seeded(3)), ['a', 'x']);
+});
+
+test('options: the answer plus different labels that never repeat the prompt', () => {
+  for (const [chapters, pair] of [[hsk1, ['zh', 'en']], [n5, ['en', 'ja']], [n5, ['zh', 'kana']]]) {
+    for (const c of chapters) {
+      for (const item of buildQueue(c.words, [pair], seeded(5))) {
+        const opts = pickOptions(item, c.words, 4, seeded(9));
+        assert.ok(opts.includes(item.word));
+        assert.equal(opts.length, 4);
+        assert.equal(new Set(opts.map((w) => w[item.to])).size, 4, 'labels differ');
+        assert.ok(opts.every((w) => w === item.word || w[item.from] !== item.word[item.from]));
+      }
+    }
+  }
+});
+
+test('scoring and CS2 aim maths', () => {
+  assert.equal(hitPoints(0, false), 200);
+  assert.equal(hitPoints(1500, false), 150);
+  assert.equal(hitPoints(5000, false), 100);
+  assert.equal(hitPoints(200, true), 50);
+  assert.ok(Math.abs(cmPer360(1.25, 800) - 41.56) < 0.01, 'sens 1.25 at 800 DPI is 41.56 cm/360');
+  assert.ok(Math.abs(CS2_VFOV - 73.74) < 0.01, 'CS2: 90° wide at 4:3');
+  assert.ok(Math.abs(VM_VFOV - 53.67) < 0.05, 'viewmodel FOV 68');
+});
+
+test('targets spread out and never overlap', () => {
+  for (const [radius, gap] of [[4.09, 3], [4.09, 6], [5.3, 6]]) {
+    for (let s = 1; s < 40; s++) {
+      const spots = placeTargets(6, radius, gap, seeded(s));
+      assert.ok(spots.length >= 5, `radius ${radius} gap ${gap} seed ${s}: only ${spots.length} spots`);
+      for (const a of spots) {
+        assert.ok(Math.abs(a.yaw) <= 40 && a.pitch >= -8 && a.pitch <= 18);
+        for (const b of spots) if (a !== b) assert.ok(Math.hypot(a.yaw - b.yaw, a.pitch - b.pitch) >= 2 * radius + gap);
+      }
     }
   }
 });

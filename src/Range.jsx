@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeftRight, Crosshair, Plus, X } from 'lucide-react';
+import { ArrowLeftRight, Crosshair as CrosshairIcon, Plus, X } from 'lucide-react';
 import hsk1 from './data/range/hsk1.js';
 import n5 from './data/range/n5.js';
-import { SIDES, fixTo, pairAllowed, usable } from './range/logic.js';
+import Game, { Crosshair } from './range/Game.jsx';
+import { SIDES, cmPer360, fixTo, loadBests, pairAllowed, usable } from './range/logic.js';
 
-// Word Range lobby: pick a level, a chapter and how words are shown (Show → Shoot), or a mix of pairs.
-// The 3D range itself comes next; Launch stays disabled until then.
+// Word Range lobby: pick a level, a chapter, how words are shown (Show → Shoot) or a mix of pairs, and the aim
+// settings. Launch opens the 3D range (range/Game.jsx).
 const LEVELS = [
   { id: 'hsk1', title: 'HSK 1', native: '汉语', lang: 'zh', font: 'font-zh', chapters: hsk1 },
   { id: 'n5', title: 'JLPT N5', native: '日本語', lang: 'ja', font: 'font-ja', chapters: n5 },
@@ -15,6 +16,12 @@ const SIDE = Object.fromEntries(SIDES.map((s) => [s.id, s]));
 const FONT = { zh: 'font-zh', ja: 'font-ja', kana: 'font-ja' };
 const LANG_ATTR = { zh: 'zh-Hans', ja: 'ja', kana: 'ja', vi: 'vi' };
 const pairName = (p) => p.split('>').map((id) => SIDE[id]?.label).join(' → ');
+
+// Aim settings. sens and dpi stay as typed (strings) so decimals type cleanly, and are parsed when used.
+const AIM = { sens: '1', dpi: '800', targets: 4, size: 'm', motion: 'still', infinite: false, volume: 0.6, xhair: { color: '#34d399', size: 4, gap: 1, thickness: 1, dot: false, outline: true } };
+const COLORS = ['#34d399', '#22d3ee', '#facc15', '#ffffff', '#ff5f78'];
+const num = (v, fallback, lo, hi) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? Math.min(hi, Math.max(lo, n)) : fallback; };
+const field = 'h-10 w-28 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-ink outline-none transition focus:border-white/25';
 
 const KEY = 'moji.range';
 const store = {
@@ -31,6 +38,7 @@ const initial = () => {
     mix: Boolean(s.mix),
     pairs: Array.isArray(s.pairs) ? s.pairs.filter((p) => p.split('>').every((id) => SIDE[id])) : ['zh>ja', 'ja>en'],
     hints: s.hints ?? true,
+    aim: { ...AIM, ...s.aim, xhair: { ...AIM.xhair, ...s.aim?.xhair } },
   };
 };
 
@@ -41,6 +49,7 @@ const chip = (on) => `rounded-full border px-3.5 py-1.5 text-sm transition disab
 
 export default function Range() {
   const [s, set] = useState(initial);
+  const [run, setRun] = useState(null); // the game in progress, if any
   useEffect(() => store.set(s), [s]);
   const update = (patch) => set((p) => ({ ...p, ...patch }));
 
@@ -53,11 +62,21 @@ export default function Range() {
   const words = usable(chapter.words, from, to);
   const example = words[0];
   const okPairs = s.pairs.filter((p) => pairAllowed(level.lang, ...p.split('>')));
+  const mixOn = s.mix && okPairs.length >= 2;
+  const pairs = mixOn ? okPairs.map((p) => p.split('>')) : [[from, to]];
+  const playable = chapter.words.filter((w) => pairs.some(([a, b]) => usable([w], a, b).length)).length;
+  const fine = typeof window !== 'undefined' && Boolean(window.matchMedia?.('(any-pointer: fine)').matches); // a mouse
+  const bests = loadBests();
+  const bestKey = (i) => `${s.level}.${i}.${mixOn ? 'mix' : pair}`;
+  const aim = { ...s.aim, sens: num(s.aim.sens, 1, 0.01, 20), dpi: num(s.aim.dpi, 800, 50, 64000) };
+  const setAim = (patch) => update({ aim: { ...s.aim, ...patch } });
+  const setX = (patch) => setAim({ xhair: { ...s.aim.xhair, ...patch } });
+  const launch = () => setRun({ id: Date.now(), title: `${level.title} · ${chapter.title}`, words: chapter.words, pairs, hints: s.hints, aim, bestKey: bestKey(ci) });
 
   return (
     <div className="mx-auto max-w-3xl">
       <div className="flex items-center gap-3">
-        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-seal to-[#ff9a5c]"><Crosshair size={22} /></span>
+        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-seal to-[#ff9a5c]"><CrosshairIcon size={22} /></span>
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Word Range</h1>
           <p className="text-sm text-muted">Shoot the matching word, one chapter at a time.</p>
@@ -80,7 +99,7 @@ export default function Range() {
         {level.chapters.map((c, i) => (
           <button key={c.title} onClick={() => update({ chapter: { ...s.chapter, [s.level]: i } })} aria-pressed={i === ci}
             className={`rounded-xl border px-3 py-2 text-left transition ${i === ci ? 'border-seal bg-seal/10' : 'border-white/10 bg-white/[0.02] hover:border-white/25'}`}>
-            <span className="block text-[11px] tabular-nums text-muted">Chapter {i + 1} · {c.words.length} words</span>
+            <span className="block text-[11px] tabular-nums text-muted">Chapter {i + 1} · {bests[bestKey(i)] ? `best ${bests[bestKey(i)].score.toLocaleString()}` : `${c.words.length} words`}</span>
             <span className="block truncate text-sm font-medium">{c.title}</span>
           </button>
         ))}
@@ -143,13 +162,72 @@ export default function Range() {
         Show pinyin / kana under words (hidden when it would give the answer away)
       </label>
 
-      <button disabled className="mt-10 flex h-14 w-full items-center justify-center gap-2 rounded-full bg-white text-base font-semibold text-black disabled:opacity-40">
-        <Crosshair size={18} />Launch
+      <Heading>Aim</Heading>
+      <div className="grid gap-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="grid gap-1 text-xs text-muted">CS2 sensitivity
+            <input type="number" inputMode="decimal" min="0.01" max="20" step="0.01" value={s.aim.sens} onChange={(e) => setAim({ sens: e.target.value })} className={field} />
+          </label>
+          <label className="grid gap-1 text-xs text-muted">Mouse DPI
+            <input type="number" inputMode="numeric" min="50" max="64000" step="50" value={s.aim.dpi} onChange={(e) => setAim({ dpi: e.target.value })} className={field} />
+          </label>
+          <p className="pb-2.5 text-sm tabular-nums">{cmPer360(aim.sens, aim.dpi).toFixed(1)} cm per 360°</p>
+        </div>
+        <p className="text-xs leading-relaxed text-muted/80">
+          Use your CS2 numbers: same mouse and DPI means the same turn per centimetre, with CS2&apos;s field of view. Chrome and Edge read raw
+          mouse input like CS2 does; in other browsers turn off Windows &quot;Enhance pointer precision&quot;. A red 180° stripe behind you lets you check your flick.
+        </p>
+        {[['Targets', 'targets', [[3, '3'], [4, '4'], [5, '5'], [6, '6']]], ['Size', 'size', [['s', 'Small'], ['m', 'Medium'], ['l', 'Large']]],
+          ['Movement', 'motion', [['still', 'Still'], ['drift', 'Drifting']]]].map(([name, k, opts]) => (
+          <div key={k} role="group" aria-label={name} className="flex flex-wrap items-center gap-2">
+            <span className="w-20 shrink-0 text-xs font-semibold uppercase tracking-wider text-muted">{name}</span>
+            {opts.map(([v, label]) => <button key={v} onClick={() => setAim({ [k]: v })} aria-pressed={s.aim[k] === v} className={chip(s.aim[k] === v)}>{label}</button>)}
+          </div>
+        ))}
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-sm">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={s.aim.infinite} onChange={(e) => setAim({ infinite: e.target.checked })} className="h-4 w-4 accent-[#ff5f78]" />Infinite ammo
+          </label>
+          <label className="flex items-center gap-2">Volume
+            <input type="range" min="0" max="1" step="0.05" value={s.aim.volume} onChange={(e) => setAim({ volume: Number(e.target.value) })} className="w-28 accent-[#ff5f78]" />
+          </label>
+        </div>
+        <div className="flex flex-wrap items-start gap-4 border-t border-white/[0.06] pt-4">
+          <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-[#0d0f16]"><Crosshair c={s.aim.xhair} /></div>
+          <div className="grid min-w-[14rem] flex-1 gap-2 text-sm">
+            <div role="group" aria-label="Crosshair colour" className="flex items-center gap-2">
+              <span className="w-20 shrink-0 text-xs font-semibold uppercase tracking-wider text-muted">Crosshair</span>
+              {COLORS.map((c) => (
+                <button key={c} onClick={() => setX({ color: c })} aria-label={`Colour ${c}`} aria-pressed={s.aim.xhair.color === c}
+                  className={`h-6 w-6 rounded-full border-2 transition ${s.aim.xhair.color === c ? 'border-white' : 'border-transparent hover:border-white/40'}`} style={{ background: c }} />
+              ))}
+            </div>
+            {[['Length', 'size', 1, 10], ['Gap', 'gap', -3, 6], ['Thickness', 'thickness', 0.5, 3]].map(([name, k, min, max]) => (
+              <label key={k} className="flex items-center gap-2">
+                <span className="w-20 shrink-0 text-xs text-muted">{name}</span>
+                <input type="range" min={min} max={max} step="0.5" value={s.aim.xhair[k]} onChange={(e) => setX({ [k]: Number(e.target.value) })} className="flex-1 accent-[#ff5f78]" />
+                <span className="w-8 text-right text-xs tabular-nums text-muted">{s.aim.xhair[k]}</span>
+              </label>
+            ))}
+            <div className="flex gap-5">
+              <label className="flex items-center gap-2"><input type="checkbox" checked={s.aim.xhair.dot} onChange={(e) => setX({ dot: e.target.checked })} className="h-4 w-4 accent-[#ff5f78]" />Centre dot</label>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={s.aim.xhair.outline} onChange={(e) => setX({ outline: e.target.checked })} className="h-4 w-4 accent-[#ff5f78]" />Outline</label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button onClick={launch} disabled={!fine || playable < 2}
+        className="mt-10 flex h-14 w-full items-center justify-center gap-2 rounded-full bg-white text-base font-semibold text-black transition hover:bg-white/90 disabled:opacity-40">
+        <CrosshairIcon size={18} />Launch
       </button>
-      <p className="mt-3 text-center text-xs text-muted">The 3D range opens in the next update. Your setup here is saved.</p>
+      <p className="mt-3 text-center text-xs text-muted">
+        {!fine ? 'Word Range needs a mouse and keyboard.' : playable < 2 ? 'Not enough words in this chapter for this pair.' : `${playable} words · Esc pauses · R reloads`}
+      </p>
       <p className="mt-8 text-center text-[11px] leading-relaxed text-muted/60">
         HSK 1: HSK 3.0 syllabus (2025). N5 word list: Jonathan Waller, tanos.co.uk (CC BY).
       </p>
+      {run && <Game key={run.id} run={run} onAgain={() => setRun({ ...run, id: Date.now() })} onExit={() => setRun(null)} />}
     </div>
   );
 }
