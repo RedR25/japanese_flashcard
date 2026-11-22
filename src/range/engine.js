@@ -233,8 +233,9 @@ export function createRange(canvas, { sens, motion, volume, disc }, on) {
   const unlight = lightViewmodel(vmScene, renderer); // room reflections for the metal, a key and a cool fill (gun.js)
   const { gun, slide, muzzle } = buildGun(); // a real-size suppressed USP Tactical (gun.js)
   gun.add(buildHands()); // gloved hands in a two-hand grip; on the gun, not the slide, so they ride the recoil (hands.js)
-  // Lower right, turned in to show the thumbs on the left side, muzzle tipped up toward the crosshair.
-  const REST = { x: 0.085, y: -0.078, z: -0.235, yaw: 0.14, pitch: 0.04 };
+  // Low and near the middle, turned in to show the thumbs on the left side. Turned in only so far: the suppressor stays
+  // ~39 px (1080p) clear of the crosshair even at full recoil kick plus sway (scratchpad muzzle-check).
+  const REST = { x: 0.072, y: -0.095, z: -0.24, yaw: 0.08, pitch: 0.03 };
   vmScene.add(gun);
   const flash = new Sprite(new SpriteMaterial({ map: dot, color: 0xffd9b0, transparent: true, opacity: 0, blending: AdditiveBlending, depthWrite: false }));
   flash.position.copy(muzzle);
