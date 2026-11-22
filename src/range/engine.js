@@ -5,6 +5,7 @@ import {
   RepeatWrapping, Scene, Sprite, SpriteMaterial, SRGBColorSpace, Vector3, WebGLRenderer,
 } from 'three';
 import { buildGun, lightViewmodel } from './gun.js';
+import { buildHands } from './hands.js';
 import { CS2_VFOV, LIFE_MS, VM_VFOV, YAW, discShades, placeTargets } from './logic.js';
 
 const RAD = Math.PI / 180;
@@ -231,7 +232,9 @@ export function createRange(canvas, { sens, motion, volume, disc }, on) {
   const vmCamera = new PerspectiveCamera(VM_VFOV, 1, 0.01, 10);
   const unlight = lightViewmodel(vmScene, renderer); // room reflections for the metal, a key and a cool fill (gun.js)
   const { gun, slide, muzzle } = buildGun(); // a real-size suppressed USP Tactical (gun.js)
-  const REST = { x: 0.115, y: -0.11, z: -0.3, yaw: 0.06 };
+  gun.add(buildHands()); // gloved hands in a two-hand grip; on the gun, not the slide, so they ride the recoil (hands.js)
+  // Lower right, turned in to show the thumbs on the left side, muzzle tipped up toward the crosshair.
+  const REST = { x: 0.095, y: -0.068, z: -0.235, yaw: 0.14, pitch: 0.04 };
   vmScene.add(gun);
   const flash = new Sprite(new SpriteMaterial({ map: dot, color: 0xffd9b0, transparent: true, opacity: 0, blending: AdditiveBlending, depthWrite: false }));
   flash.position.copy(muzzle);
@@ -435,7 +438,7 @@ export function createRange(canvas, { sens, motion, volume, disc }, on) {
     moveY = 0;
     const k = kick * kick;
     gun.position.set(REST.x + swayX, REST.y + swayY + k * 0.008 + Math.sin(now / 900) * 0.0015, REST.z + k * 0.03);
-    gun.rotation.set(k * 0.16, REST.yaw, 0);
+    gun.rotation.set(REST.pitch + k * 0.16, REST.yaw, 0);
     slide.position.z = slideBack * slideBack * 0.032;
     flash.material.opacity = Math.max(0, slideBack - 0.75) * 3.2;
     renderer.clear();
