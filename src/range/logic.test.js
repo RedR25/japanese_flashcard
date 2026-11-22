@@ -2,7 +2,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  CS2_VFOV, SIDES, VM_VFOV, buildQueue, cmPer360, fixTo, hintFor, hitPoints, pairAllowed, pickOptions, placeTargets, requeue, usable,
+  CS2_VFOV, GAP, LIFE_MS, SIDES, VM_VFOV, buildQueue, cmPer360, fixTo, hintFor, hitPoints, nextPrompt, pairAllowed, pairName, pickOptions,
+  placeTargets, usable,
 } from './logic.js';
 
 const seeded = (seed) => () => (seed = (seed * 16807) % 2147483647) / 2147483647;
@@ -58,17 +59,48 @@ test('hints never give the answer away', () => {
   assert.equal(hintFor(chi, 'en', 'zh'), null);
 });
 
-test('a run asks every usable word once, with a pair it works for', () => {
+test('a round asks every usable word once, with a pair it works for', () => {
   const words = hsk1[0].words;
   assert.equal(buildQueue(words, [['zh', 'ja']], seeded(1)).length, usable(words, 'zh', 'ja').length);
   const mix = buildQueue(words, [['zh', 'ja'], ['en', 'zh']], seeded(2));
   assert.equal(new Set(mix.map((q) => q.word)).size, mix.length);
   assert.ok(mix.every((q) => usable([q.word], q.from, q.to).length));
-  for (let s = 1; s < 20; s++) {
-    const at = requeue(['a', 'b', 'c', 'd', 'e', 'f'], 'x', seeded(s)).indexOf('x');
-    assert.ok(at >= 3 && at <= 5, `missed word comes back 3-5 later, got ${at}`);
+});
+
+// Deals n prompts the way Game.jsx does, putting a missed word back at the front of the queue.
+const deal = (words, n, missRate, rand) => {
+  let queue = [];
+  const recent = [];
+  for (let k = 0; k < n; k++) {
+    const r = nextPrompt(queue, recent, () => buildQueue(words, [['zh', 'en']], rand));
+    queue = r.queue;
+    recent.push(r.item.word);
+    if (rand() < missRate) queue = [r.item, ...queue];
   }
-  assert.deepEqual(requeue(['a'], 'x', seeded(3)), ['a', 'x']);
+  return recent;
+};
+
+test('a minute never shows a word again until GAP others have passed', () => {
+  for (const [words, missRate] of [[hsk1[0].words, 0], [hsk1[0].words, 0.3], [hsk1[3].words.slice(0, GAP + 1), 0.5]]) {
+    for (let s = 1; s < 30; s++) {
+      const seq = deal(words, 200, missRate, seeded(s));
+      seq.forEach((w, i) => assert.ok(!seq.slice(Math.max(0, i - GAP), i).includes(w), `seed ${s}: ${w.zh} back after fewer than ${GAP}`));
+    }
+  }
+  const words = hsk1[0].words;
+  assert.equal(new Set(deal(words, words.length, 0, seeded(4))).size, words.length, 'every word shows before any repeats');
+});
+
+test('a missed word comes back right after GAP others', () => {
+  const words = hsk1[0].words;
+  const recent = [];
+  let queue = [];
+  const take = () => { const r = nextPrompt(queue, recent, () => buildQueue(words, [['zh', 'en']], seeded(7))); queue = r.queue; recent.push(r.item.word); return r.item; };
+  const missed = take();
+  queue = [missed, ...queue];
+  for (let k = 0; k < GAP; k++) assert.notEqual(take().word, missed.word);
+  assert.equal(take().word, missed.word);
+  assert.deepEqual(nextPrompt([], words.slice(0, 2), () => []), { item: null, queue: [] }, 'nothing left to deal');
 });
 
 test('options: the answer plus different labels that never repeat the prompt', () => {
@@ -86,10 +118,13 @@ test('options: the answer plus different labels that never repeat the prompt', (
 });
 
 test('scoring and CS2 aim maths', () => {
-  assert.equal(hitPoints(0, false), 200);
-  assert.equal(hitPoints(1500, false), 150);
-  assert.equal(hitPoints(5000, false), 100);
-  assert.equal(hitPoints(200, true), 50);
+  assert.equal(hitPoints(0, false), 100, 'instant hit: the whole disc');
+  assert.equal(hitPoints(LIFE_MS / 2, false), 50, 'half the area left');
+  assert.ok(hitPoints(1000, false) > hitPoints(2000, false), 'faster scores more');
+  assert.equal(hitPoints(LIFE_MS - 1, false), 1, 'a last-moment hit still counts');
+  assert.equal(hitPoints(200, true), 0, 'nothing after a wrong shot');
+  assert.equal(pairName('zh>en'), '中文 → English');
+  assert.equal(pairName('mix'), 'Mix');
   assert.ok(Math.abs(cmPer360(1.25, 800) - 41.56) < 0.01, 'sens 1.25 at 800 DPI is 41.56 cm/360');
   assert.ok(Math.abs(CS2_VFOV - 73.74) < 0.01, 'CS2: 90° wide at 4:3');
   assert.ok(Math.abs(VM_VFOV - 53.67) < 0.05, 'viewmodel FOV 68');

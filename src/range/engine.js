@@ -5,7 +5,7 @@ import {
   Fog, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, PerspectiveCamera, RepeatWrapping, Scene, Sprite,
   SpriteMaterial, SRGBColorSpace, Vector3, WebGLRenderer,
 } from 'three';
-import { CS2_VFOV, VM_VFOV, YAW, placeTargets } from './logic.js';
+import { CS2_VFOV, LIFE_MS, VM_VFOV, YAW, placeTargets } from './logic.js';
 
 const RAD = Math.PI / 180;
 const EYE = 1.6;
@@ -215,7 +215,7 @@ function makeSounds(volume) {
   };
 }
 
-// on: { onShot({ id, correct } | null), onLock(locked, raw), onAmmo(left, reloading), onLockError() }
+// on: { onShot({ id, correct, ms } | null), onExpire(), onLock(locked, raw), onAmmo(left, reloading), onLockError() }
 export function createRange(canvas, { sens, size, motion, infinite, volume }, on) {
   const renderer = new WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -272,6 +272,7 @@ export function createRange(canvas, { sens, size, motion, infinite, volume }, on
   const parts = [];
   const HOLD = { wrong: 900, correct: 0, clear: 0 };
   const FADE = { wrong: 350, correct: 200, clear: 130 };
+  let clock = 0; // ms of play: it only runs while the mouse is locked, so Esc freezes the discs (and Game's minute)
 
   function retire(t, how) {
     t.alive = false;
@@ -294,32 +295,39 @@ export function createRange(canvas, { sens, size, motion, infinite, volume }, on
       const sprite = new Sprite(new SpriteMaterial({ map: discTexture(item.face, false), transparent: true, depthWrite: false }));
       sprite.position.copy(base);
       scene.add(sprite);
-      targets.push({ ...item, sprite, base, alive: true, born: performance.now(), phase: Math.random() * 6.28, end: null });
+      targets.push({ ...item, sprite, base, alive: true, born: clock, k: 1, phase: Math.random() * 6.28, end: null });
     });
   }
 
   function updateTargets(now) {
     const t = now / 1000;
+    let expired = false;
     targets = targets.filter((tg) => {
       const s = tg.sprite;
+      const age = clock - tg.born;
+      if (tg.alive) {
+        tg.k = Math.sqrt(Math.max(0, 1 - age / LIFE_MS)); // radius left: the disc's area shrinks linearly to nothing
+        if (age >= LIFE_MS) { retire(tg, 'clear'); expired = true; }
+      }
       if (motion === 'drift' && tg.alive) s.position.set(tg.base.x + Math.sin(t * 0.8 + tg.phase) * 0.6, tg.base.y + Math.sin(t * 1.3 + tg.phase * 1.7) * 0.3, tg.base.z);
-      let scale = Math.min(1, 0.6 + (now - tg.born) / 300);
+      let scale = Math.min(1, 0.6 + age / 300) * tg.k;
       let opacity = 1;
       if (tg.end) {
-        const k = Math.max(0, now - tg.end.at - HOLD[tg.end.how]) / FADE[tg.end.how];
-        if (k >= 1) {
+        const f = Math.max(0, now - tg.end.at - HOLD[tg.end.how]) / FADE[tg.end.how];
+        if (f >= 1) {
           scene.remove(s);
           s.material.map.dispose();
           s.material.dispose();
           return false;
         }
-        opacity = 1 - k;
-        if (tg.end.how === 'correct') scale *= 1 + k * 0.5;
+        opacity = 1 - f;
+        if (tg.end.how === 'correct') scale *= 1 + f * 0.5;
       }
       s.material.opacity = opacity;
       s.scale.setScalar(radius * 2 * scale);
       return true;
     });
+    if (expired) on.onExpire();
   }
 
   function burst(at, color) {
@@ -417,7 +425,8 @@ export function createRange(canvas, { sens, size, motion, infinite, volume }, on
       if (!tg.alive) continue;
       toTarget.subVectors(tg.sprite.position, camera.position);
       const along = toTarget.dot(ray);
-      if (along > 0 && along < nearest && toTarget.lengthSq() - along * along <= radius * radius) { hit = tg; nearest = along; }
+      const r = radius * tg.k; // as big as it looks right now
+      if (along > 0 && along < nearest && toTarget.lengthSq() - along * along <= r * r) { hit = tg; nearest = along; }
     }
     if (hit?.correct) {
       burst(hit.sprite.position, 0x34d399);
@@ -428,7 +437,7 @@ export function createRange(canvas, { sens, size, motion, infinite, volume }, on
       retire(hit, 'wrong');
       sounds.wrong();
     }
-    on.onShot(hit && { id: hit.id, correct: hit.correct });
+    on.onShot(hit && { id: hit.id, correct: hit.correct, ms: clock - hit.born });
     if (!infinite && ammo === 0) reload();
   }
   const onDown = (e) => { if (locked && e.button === 0) fire(); };
@@ -442,6 +451,7 @@ export function createRange(canvas, { sens, size, motion, infinite, volume }, on
   function frame(now) {
     raf = requestAnimationFrame(frame);
     const dt = Math.min(0.05, (now - last) / 1000);
+    if (locked) clock += Math.min(100, Math.max(0, now - last)); // a long stall (GC, tab switch) can't eat a disc
     last = now;
     camera.rotation.set(pitch, yaw, 0);
     if (reloadAt && now - reloadAt >= RELOAD_MS) { reloadAt = 0; ammo = MAG; on.onAmmo(ammo, false); }
@@ -506,6 +516,7 @@ export function createRange(canvas, { sens, size, motion, infinite, volume }, on
     spawn,
     lock,
     unlock: () => { if (document.pointerLockElement === canvas) document.exitPointerLock(); },
+    time: () => clock,
     destroy,
   };
 }

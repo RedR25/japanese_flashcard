@@ -40,6 +40,14 @@ await db.query(`
     known text[] not null default '{}',
     updated_at timestamptz not null default now()
   );
+  create table if not exists range_scores (
+    user_id bigint not null references users(id) on delete cascade,
+    board text not null,
+    score int not null,
+    mode text not null,
+    updated_at timestamptz not null default now(),
+    primary key (user_id, board)
+  );
 `);
 
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
@@ -215,6 +223,50 @@ app.post('/api/chat', auth, async (req, res) => {
     return res.status(r.status === 429 ? 429 : 502).json({ error: 'chat failed' });
   }
   res.json({ reply });
+});
+
+// Word Range leaderboards. The game and its scoring run in the browser; the server only keeps each member's best per
+// chapter and ranks them. Names and photos are shown to other members; emails and ids never leave the server.
+const BOARD = /^[a-z0-9]{1,8}\.\d{1,2}$/; // level.chapter, e.g. hsk1.0
+const MODE = /^(mix|[a-z]{2,6}>[a-z]{2,6})$/; // the pair the best was set with, e.g. zh>en
+const MAX_SCORE = 20000; // far above a real minute (≤100 a word, a word every ~0.3 s at the very best)
+const members = (p) => `(u.status = 'approved' or lower(u.email) = any($${p}))`; // revoked players drop off the boards
+
+const leaderboards = async (userId, board) => {
+  const admins = [...ADMINS];
+  const [chapter, total, mine] = await Promise.all([
+    db.query(`select name, picture, score, mode, rank::int, (id = $1) as me from (
+        select u.id, u.name, u.picture, r.score, r.mode, rank() over (order by r.score desc) as rank
+        from range_scores r join users u on u.id = r.user_id where r.board = $2 and ${members(3)}) x
+      where rank <= 10 or id = $1 order by rank, name`, [userId, board, admins]),
+    db.query(`select name, picture, score::int, rank::int, (id = $1) as me from (
+        select u.id, u.name, u.picture, sum(r.score) as score, rank() over (order by sum(r.score) desc) as rank
+        from range_scores r join users u on u.id = r.user_id where ${members(2)} group by u.id) x
+      where rank <= 10 or id = $1 order by rank, name`, [userId, admins]),
+    db.query('select board, score from range_scores where user_id = $1', [userId]),
+  ]);
+  return { chapter: chapter.rows, total: total.rows, mine: Object.fromEntries(mine.rows.map((r) => [r.board, r.score])) };
+};
+
+app.get('/api/range', auth, async (req, res) => {
+  if (!approved(req.user)) return res.status(403).json({ error: 'not_approved' });
+  const { board } = req.query;
+  if (typeof board !== 'string' || !BOARD.test(board)) return res.status(400).json({ error: 'bad request' });
+  res.json(await leaderboards(req.user.id, board));
+});
+
+app.post('/api/range', auth, async (req, res) => {
+  if (!approved(req.user)) return res.status(403).json({ error: 'not_approved' });
+  const { board, score, mode } = req.body ?? {};
+  if (typeof board !== 'string' || !BOARD.test(board) || typeof mode !== 'string' || !MODE.test(mode)
+    || !Number.isInteger(score) || score < 0 || score > MAX_SCORE) return res.status(400).json({ error: 'bad request' });
+  const prev = (await db.query('select score from range_scores where user_id = $1 and board = $2', [req.user.id, board])).rows[0]?.score ?? null;
+  if (prev === null || score > prev) {
+    await db.query(`insert into range_scores (user_id, board, score, mode) values ($1, $2, $3, $4)
+      on conflict (user_id, board) do update set score = excluded.score, mode = excluded.mode, updated_at = now()`,
+    [req.user.id, board, score, mode]);
+  }
+  res.json({ prev, ...(await leaderboards(req.user.id, board)) });
 });
 
 // Express 5 forwards async errors here. Never leak internals. (4-arg signature is how Express recognises it.)

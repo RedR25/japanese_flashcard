@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { HINT, SIDES, WRONG_POINTS, buildQueue, cmPer360, hintFor, hitPoints, pickOptions, requeue, saveBest } from './logic.js';
+import { HINT, PENALTY, RUN_MS, SIDES, buildQueue, cmPer360, getBoards, hintFor, hitPoints, nextPrompt, pairName, pickOptions, postScore } from './logic.js';
 
-// The Word Range run: loads the 3D engine (three.js, only now), runs the words of one chapter, draws the HUD.
+// The Word Range run: loads the 3D engine (three.js, only now), deals one chapter's words for a minute, draws the HUD.
 const SIDE = Object.fromEntries(SIDES.map((s) => [s.id, s]));
 const FONT = { zh: 'font-zh', ja: 'font-ja', kana: 'font-ja' };
 const LANG = { zh: 'zh-Hans', ja: 'ja', kana: 'ja', vi: 'vi' };
@@ -42,14 +42,42 @@ export function Crosshair({ c }) {
   );
 }
 
-const clock = (ms) => { const s = Math.floor(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
-const Panel = ({ children }) => <div className="absolute inset-0 grid place-items-center bg-black/55 p-6 backdrop-blur-[2px]">{children}</div>;
+// A leaderboard: the top 10 (ties share a rank) with your row highlighted, and your row underneath when you're further
+// down. rows: undefined while loading, null when the server can't be reached.
+export function Leaderboard({ rows, empty, modes = false }) {
+  const note = (text) => <p className="py-4 text-center text-sm text-white/50">{text}</p>;
+  if (rows === undefined) return note('Loading…');
+  if (rows === null) return note('Leaderboard unavailable right now.');
+  if (!rows.length) return note(empty);
+  return (
+    <ol className="grid gap-1">
+      {rows.map((r, i) => (
+        <li key={i} className={`flex items-center gap-3 rounded-xl px-3 py-1.5 ${r.me ? 'bg-seal/15 ring-1 ring-inset ring-seal/40' : 'bg-white/[0.03]'} ${r.rank > 10 ? 'mt-2' : ''}`}>
+          <span className="w-5 shrink-0 text-right text-xs tabular-nums text-white/50">{r.rank}</span>
+          {r.picture
+            ? <img src={r.picture} alt="" referrerPolicy="no-referrer" loading="lazy" className="h-6 w-6 shrink-0 rounded-full" />
+            : <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-seal text-[10px] font-bold text-white">{(r.name || '?')[0].toUpperCase()}</span>}
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-medium">{r.name || 'Player'}{r.me && <span className="text-white/50"> · you</span>}</span>
+            {modes && r.mode && <span className="block truncate text-[11px] text-white/45">{pairName(r.mode)}</span>}
+          </span>
+          <span className="text-sm font-semibold tabular-nums">{r.score.toLocaleString()}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+// Time left, rounded up so the last second still reads 0:01.
+const clock = (ms) => { const s = Math.ceil(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+// Blurred enough that Esc can't be used to study the discs.
+const Panel = ({ children }) => <div className="absolute inset-0 grid place-items-center bg-black/60 p-6 backdrop-blur-md">{children}</div>;
 const Say = ({ side, className = '', children }) => <span lang={LANG[side]} className={`${FONT[side] || ''} ${className}`}>{children}</span>;
 
 export default function Game({ run, onAgain, onExit }) {
   const canvas = useRef(null);
   const eng = useRef(null);
-  const st = useRef(null); // the round: queue, current prompt, score… (mutable, read by the engine callbacks)
+  const st = useRef(null); // the run: queue, current prompt, score… (mutable, read by the engine callbacks)
   const [phase, setPhase] = useState('loading'); // loading | ready | play | paused | done | error
   const [, setTick] = useState(0);
   const bump = () => setTick((t) => t + 1);
@@ -58,75 +86,96 @@ export default function Game({ run, onAgain, onExit }) {
   const [raw, setRaw] = useState(null);
   const [lockFailed, setLockFailed] = useState(false);
   const [result, setResult] = useState(null);
+  const [board, setBoard] = useState(); // the server's reply after the run: undefined while saving, null if unreachable
   const [error, setError] = useState('');
   const { aim } = run;
+  const played = () => eng.current.time() - st.current.start; // ms of play so far (Esc stops the engine's clock)
 
   const finish = () => {
     const s = st.current;
+    if (s.over) return;
     s.over = true;
     eng.current.spawn([]);
     eng.current.unlock();
     const acc = s.shots ? s.hits / s.shots : 0;
     const ms = s.times.length ? s.times.reduce((a, b) => a + b, 0) / s.times.length : 0;
-    const prev = saveBest(run.bestKey, { score: s.score, acc, ms });
-    setResult({ score: s.score, acc, ms, time: performance.now() - s.t0 - s.paused, missed: [...s.missed.values()], prev });
+    setResult({ score: s.score, acc, ms, cleared: s.cleared, missed: [...s.missed.values()] });
     setPhase('done');
+    // The server keeps each player's best per chapter; a run without points just reads the board.
+    (s.score > 0 ? postScore(run.board, s.score, run.mode) : getBoards(run.board)).then(setBoard, () => setBoard(null));
   };
 
   const next = () => {
     const s = st.current;
     if (!s || s.over || !eng.current) return;
-    if (!s.queue.length) { finish(); return; }
-    const [item, ...rest] = s.queue;
-    s.queue = rest;
-    s.item = item;
-    s.hadWrong = false;
-    s.shown = performance.now();
+    const { item, queue } = nextPrompt(s.queue, s.recent, () => buildQueue(run.words, run.pairs));
+    s.queue = queue;
+    if (!item) { finish(); return; } // only with fewer than GAP + 1 words, which the lobby won't launch
+    s.recent.push(item.word);
+    Object.assign(s, { item, late: null, miss: false });
     const options = pickOptions(item, run.words, aim.targets);
     eng.current.spawn(options.map((w, id) => ({ id, correct: w === item.word, face: face(w, item.to, item.from, run.hints), reveal: reveal(w, item) })));
     bump();
+  };
+
+  // The first miss on a prompt lists the word and puts it first in line, so it's back once GAP others have passed.
+  const flag = (s) => {
+    if (s.miss) return;
+    s.miss = true;
+    s.missed.set(s.item.word, s.item);
+    s.queue = [s.item, ...s.queue];
   };
 
   const handlers = useRef(null);
   handlers.current = {
     onShot: (hit) => {
       const s = st.current;
-      if (!s?.item) return;
+      if (!s?.item || s.over) return;
+      if (played() >= RUN_MS) { finish(); return; } // the buzzer beat this click
       s.shots++;
       if (hit?.correct) {
-        const ms = performance.now() - s.shown;
-        const pts = hitPoints(ms, s.hadWrong);
+        const pts = hitPoints(hit.ms, s.miss);
         s.score += pts;
         s.hits++;
-        s.done++;
-        s.times.push(ms);
+        s.cleared++;
+        s.times.push(hit.ms);
         s.item = null;
-        setPop({ text: `+${pts}`, good: true, key: s.shots });
+        setPop({ text: `+${pts}`, good: true, key: performance.now() });
         setTimeout(next, 140);
       } else if (hit) {
-        s.score = Math.max(0, s.score - WRONG_POINTS);
-        if (!s.hadWrong) { s.hadWrong = true; s.missed.set(s.item.word, s.item); s.queue = requeue(s.queue, s.item); }
-        setPop({ text: `−${WRONG_POINTS}`, good: false, key: s.shots });
+        s.score = Math.max(0, s.score - PENALTY);
+        flag(s);
+        setPop({ text: `−${PENALTY}`, good: false, key: performance.now() });
       }
       bump();
+    },
+    onExpire: () => { // the discs shrank away: points off, the answer shows for a moment, then the next word
+      const s = st.current;
+      if (!s?.item || s.over) return;
+      s.score = Math.max(0, s.score - PENALTY);
+      flag(s);
+      s.late = s.item;
+      s.item = null;
+      setPop({ text: `Too slow −${PENALTY}`, good: false, key: performance.now() });
+      setTimeout(next, 900);
+      bump();
+    },
+    onTick: () => {
+      const s = st.current;
+      if (s && !s.over && played() >= RUN_MS) finish();
+      else bump();
     },
     onLock: (locked, isRaw) => {
       setRaw(isRaw);
       const s = st.current;
       if (locked) {
         setLockFailed(false);
-        if (!s) { // first lock starts the run
-          st.current = { queue: buildQueue(run.words, run.pairs), item: null, done: 0, score: 0, shots: 0, hits: 0, times: [], missed: new Map(), t0: performance.now(), paused: 0, pauseAt: 0, over: false };
-          setPhase('play');
-          next();
-          return;
-        }
-        if (s.pauseAt) { const d = performance.now() - s.pauseAt; s.paused += d; s.shown += d; s.pauseAt = 0; }
         setPhase('play');
-      } else if (s && !s.over) {
-        s.pauseAt = performance.now();
-        setPhase('paused');
-      }
+        if (!s) { // the first lock starts the run
+          st.current = { queue: [], recent: [], item: null, late: null, miss: false, cleared: 0, score: 0, shots: 0, hits: 0, times: [], missed: new Map(), start: eng.current.time(), over: false };
+          next();
+        }
+      } else if (s && !s.over) setPhase('paused');
     },
     onAmmo: (n, reloading) => setAmmo({ n, reloading }),
     onLockError: () => setLockFailed(true),
@@ -139,6 +188,7 @@ export default function Game({ run, onAgain, onExit }) {
         if (dead) return;
         eng.current = createRange(canvas.current, run.aim, {
           onShot: (h) => handlers.current.onShot(h),
+          onExpire: () => handlers.current.onExpire(),
           onLock: (l, r) => handlers.current.onLock(l, r),
           onAmmo: (n, r) => handlers.current.onAmmo(n, r),
           onLockError: () => handlers.current.onLockError(),
@@ -149,19 +199,26 @@ export default function Game({ run, onAgain, onExit }) {
     return () => { dead = true; eng.current?.destroy(); eng.current = null; };
   }, [run]);
 
-  useEffect(() => { // tick the HUD clock
+  useEffect(() => { // the HUD clock, and the buzzer at one minute
     if (phase !== 'play') return undefined;
-    const id = setInterval(() => setTick((t) => t + 1), 250);
+    const id = setInterval(() => handlers.current.onTick(), 100);
     return () => clearInterval(id);
   }, [phase]);
 
   const s = st.current;
-  const item = s?.item;
-  const left = s ? s.queue.length + (item ? 1 : 0) : 0;
-  const elapsed = s ? (s.pauseAt || performance.now()) - s.t0 - s.paused : 0;
-  const hint = item && run.hints ? hintFor(item.word, item.from, item.to) : null;
+  const shown = s?.item || s?.late; // the prompt, or the one that just ran out (shown with its answer)
+  const left = s && eng.current ? Math.max(0, RUN_MS - played()) : RUN_MS;
+  const hint = s?.item && run.hints ? hintFor(s.item.word, s.item.from, s.item.to) : null;
   const noRaw = raw === false || (raw === null && !chromium());
-  const newBest = result && (!result.prev || result.score > result.prev.score);
+  const newBest = result?.score > 0 && board && (board.prev == null || result.score > board.prev);
+  const me = board?.total?.find((r) => r.me);
+  const verdict = () => {
+    if (!result.score) return 'No points this time.';
+    if (board === undefined) return 'Saving…';
+    if (board === null) return 'Couldn’t reach the leaderboard, so this score wasn’t saved.';
+    if (board.prev == null) return 'First score on this chapter';
+    return newBest ? `New best! (was ${board.prev.toLocaleString()})` : `Your best: ${board.prev.toLocaleString()}`;
+  };
 
   return (
     <div className="fixed inset-0 z-50 select-none overflow-hidden bg-[#090a10] text-ink">
@@ -171,17 +228,20 @@ export default function Game({ run, onAgain, onExit }) {
         <div className="pointer-events-none absolute inset-0">
           <div className="absolute left-5 top-4">
             <p className="text-sm font-semibold">{run.title}</p>
-            <p className="text-xs tabular-nums text-white/60">{s.done} cleared · {left} left</p>
+            <p className="text-xs tabular-nums text-white/60">{s.cleared} cleared</p>
           </div>
           <div className="absolute right-5 top-4 text-right">
             <p className="text-2xl font-semibold tabular-nums">{s.score.toLocaleString()}</p>
-            <p className="text-xs tabular-nums text-white/60">{clock(elapsed)} · {s.shots ? Math.round((s.hits / s.shots) * 100) : 100}% accuracy</p>
+            <p className={`text-lg font-semibold tabular-nums ${left <= 10_000 ? 'text-seal' : ''}`}>{clock(left)}</p>
+            <p className="text-xs tabular-nums text-white/60">{s.shots ? Math.round((s.hits / s.shots) * 100) : 100}% accuracy</p>
           </div>
-          {item && (
+          {phase === 'play' && shown && (
             <div className="absolute inset-x-0 top-[5%] flex flex-col items-center px-4 text-center [text-shadow:0_2px_14px_rgb(0_0_0/0.7)]">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/55">{SIDE[item.from].label} → {SIDE[item.to].label}</span>
-              <Say side={item.from} className="mt-1 text-5xl font-bold">{item.word[item.from]}</Say>
-              {hint && <Say side={HINT[item.from]} className="mt-1 text-lg text-white/75">{hint}</Say>}
+              <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/55">{SIDE[shown.from].label} → {SIDE[shown.to].label}</span>
+              <Say side={shown.from} className="mt-1 text-5xl font-bold">{shown.word[shown.from]}</Say>
+              {s.late
+                ? <Say side={shown.to} className="mt-2 text-2xl font-semibold text-seal">{shown.word[shown.to]}</Say>
+                : hint && <Say side={HINT[shown.from]} className="mt-1 text-lg text-white/75">{hint}</Say>}
             </div>
           )}
           <div className="absolute bottom-5 right-6 text-right">
@@ -190,7 +250,7 @@ export default function Game({ run, onAgain, onExit }) {
           </div>
           {phase === 'play' && <Crosshair c={aim.xhair} />}
           {phase === 'play' && pop && (
-            <span key={pop.key} className={`range-pop absolute left-1/2 top-[calc(50%+20px)] text-lg font-bold ${pop.good ? 'text-jade' : 'text-seal'}`}>{pop.text}</span>
+            <span key={pop.key} className={`range-pop absolute left-1/2 top-[calc(50%+20px)] whitespace-nowrap text-lg font-bold ${pop.good ? 'text-jade' : 'text-seal'}`}>{pop.text}</span>
           )}
         </div>
       )}
@@ -203,8 +263,13 @@ export default function Game({ run, onAgain, onExit }) {
             <button onClick={() => eng.current?.lock()} className="w-full rounded-3xl border border-white/10 bg-[#141416] px-6 py-8 transition hover:border-white/25">
               <span className="block text-2xl font-semibold">{phase === 'ready' ? 'Click to start' : 'Paused'}</span>
               <span className="mt-1 block text-sm text-white/60">
-                {lockFailed ? 'Click again. The browser needs a moment after Esc.' : phase === 'ready' ? 'Shoot the disc that matches the word at the top.' : 'Click to resume'}
+                {lockFailed ? 'Click again. The browser needs a moment after Esc.' : phase === 'ready' ? 'Shoot the disc that matches the word at the top.' : 'Click to resume. The clock is stopped.'}
               </span>
+              {phase === 'ready' && (
+                <span className="mt-3 block text-xs leading-relaxed text-white/60">
+                  You have 1 minute. Discs shrink as time passes: hit the right one fast for up to 100. A wrong word or a disc you let vanish costs {PENALTY}.
+                </span>
+              )}
               <span className="mt-4 block text-xs text-white/45">
                 Esc pauses · R reloads · CS2 sens {aim.sens} at {aim.dpi} DPI = {cmPer360(aim.sens, aim.dpi).toFixed(1)} cm/360°
               </span>
@@ -234,17 +299,18 @@ export default function Game({ run, onAgain, onExit }) {
           <div className="max-h-full w-full max-w-md overflow-y-auto rounded-3xl border border-white/10 bg-[#141416] p-6">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/50">{run.title}</p>
             <p className="mt-1 text-4xl font-semibold tabular-nums">{result.score.toLocaleString()}</p>
-            <p className={`text-sm ${newBest ? 'text-jade' : 'text-white/60'}`}>
-              {!result.prev ? 'First run with this setup' : newBest ? `New best! (was ${result.prev.score.toLocaleString()})` : `Best: ${result.prev.score.toLocaleString()}`}
-            </p>
+            <p className={`text-sm ${newBest ? 'text-jade' : 'text-white/60'}`}>{verdict()}</p>
             <dl className="mt-5 grid grid-cols-3 gap-2 text-center">
-              {[['Accuracy', `${Math.round(result.acc * 100)}%`], ['Avg to hit', `${Math.round(result.ms).toLocaleString()} ms`], ['Time', clock(result.time)]].map(([k, v]) => (
+              {[['Words', result.cleared], ['Accuracy', `${Math.round(result.acc * 100)}%`], ['Avg to hit', `${Math.round(result.ms).toLocaleString()} ms`]].map(([k, v]) => (
                 <div key={k} className="rounded-2xl bg-white/[0.04] px-2 py-3">
                   <dt className="text-[11px] uppercase tracking-wider text-white/50">{k}</dt>
                   <dd className="mt-1 font-semibold tabular-nums">{v}</dd>
                 </div>
               ))}
             </dl>
+            <h3 className="mb-2 mt-6 text-xs font-semibold uppercase tracking-[0.18em] text-white/50">Chapter leaderboard</h3>
+            <Leaderboard rows={board === null ? null : board?.chapter} modes empty="No scores on this chapter yet." />
+            {me && <p className="mt-2 text-xs tabular-nums text-white/60">Your total across all chapters: {me.score.toLocaleString()} · #{me.rank}</p>}
             {result.missed.length > 0 && (
               <>
                 <h3 className="mt-6 text-xs font-semibold uppercase tracking-[0.18em] text-white/50">Words you missed</h3>

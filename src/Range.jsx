@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { ArrowLeftRight, Crosshair as CrosshairIcon, Plus, X } from 'lucide-react';
 import hsk1 from './data/range/hsk1.js';
 import n5 from './data/range/n5.js';
-import Game, { Crosshair } from './range/Game.jsx';
-import { SIDES, cmPer360, fixTo, loadBests, pairAllowed, usable } from './range/logic.js';
+import Game, { Crosshair, Leaderboard } from './range/Game.jsx';
+import { GAP, SIDES, cmPer360, fixTo, getBoards, pairAllowed, pairName, usable } from './range/logic.js';
 
 // Word Range lobby: pick a level, a chapter, how words are shown (Show → Shoot) or a mix of pairs, and the aim
 // settings. Launch opens the 3D range (range/Game.jsx).
@@ -15,7 +15,6 @@ const LANG_NAME = { zh: 'Chinese', ja: 'Japanese' };
 const SIDE = Object.fromEntries(SIDES.map((s) => [s.id, s]));
 const FONT = { zh: 'font-zh', ja: 'font-ja', kana: 'font-ja' };
 const LANG_ATTR = { zh: 'zh-Hans', ja: 'ja', kana: 'ja', vi: 'vi' };
-const pairName = (p) => p.split('>').map((id) => SIDE[id]?.label).join(' → ');
 
 // Aim settings. sens and dpi stay as typed (strings) so decimals type cleanly, and are parsed when used.
 const AIM = { sens: '1', dpi: '800', targets: 4, size: 'm', motion: 'still', infinite: false, volume: 0.6, xhair: { color: '#34d399', size: 4, gap: 1, thickness: 1, dot: false, outline: true } };
@@ -50,12 +49,22 @@ const chip = (on) => `rounded-full border px-3.5 py-1.5 text-sm transition disab
 export default function Range() {
   const [s, set] = useState(initial);
   const [run, setRun] = useState(null); // the game in progress, if any
+  const [boards, setBoards] = useState(null); // the server's last reply: { board, chapter, total, mine }, or { off: true }
   useEffect(() => store.set(s), [s]);
   const update = (patch) => set((p) => ({ ...p, ...patch }));
 
   const level = LEVELS.find((l) => l.id === s.level);
   const ci = Math.min(s.chapter[s.level] ?? 0, level.chapters.length - 1);
   const chapter = level.chapters[ci];
+  const board = `${s.level}.${ci}`;
+  const playing = Boolean(run);
+  useEffect(() => { // fetch this chapter's board, and again after a run
+    if (playing) return undefined;
+    let live = true;
+    getBoards(board).then((b) => live && setBoards({ ...b, board }), () => live && setBoards({ off: true }));
+    return () => { live = false; };
+  }, [board, playing]);
+  const mine = boards?.mine ?? {};
   const { from } = s;
   const to = fixTo(level.lang, from, s.to); // a saved pair may not suit this level (N5 needs Japanese on one side)
   const pair = `${from}>${to}`;
@@ -66,12 +75,10 @@ export default function Range() {
   const pairs = mixOn ? okPairs.map((p) => p.split('>')) : [[from, to]];
   const playable = chapter.words.filter((w) => pairs.some(([a, b]) => usable([w], a, b).length)).length;
   const fine = typeof window !== 'undefined' && Boolean(window.matchMedia?.('(any-pointer: fine)').matches); // a mouse
-  const bests = loadBests();
-  const bestKey = (i) => `${s.level}.${i}.${mixOn ? 'mix' : pair}`;
   const aim = { ...s.aim, sens: num(s.aim.sens, 1, 0.01, 20), dpi: num(s.aim.dpi, 800, 50, 64000) };
   const setAim = (patch) => update({ aim: { ...s.aim, ...patch } });
   const setX = (patch) => setAim({ xhair: { ...s.aim.xhair, ...patch } });
-  const launch = () => setRun({ id: Date.now(), title: `${level.title} · ${chapter.title}`, words: chapter.words, pairs, hints: s.hints, aim, bestKey: bestKey(ci) });
+  const launch = () => setRun({ id: Date.now(), title: `${level.title} · ${chapter.title}`, words: chapter.words, pairs, hints: s.hints, aim, board, mode: mixOn ? 'mix' : pair });
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -79,7 +86,7 @@ export default function Range() {
         <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-seal to-[#ff9a5c]"><CrosshairIcon size={22} /></span>
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Word Range</h1>
-          <p className="text-sm text-muted">Shoot the matching word, one chapter at a time.</p>
+          <p className="text-sm text-muted">One-minute rounds: shoot the matching word before its disc shrinks away.</p>
         </div>
       </div>
 
@@ -99,11 +106,24 @@ export default function Range() {
         {level.chapters.map((c, i) => (
           <button key={c.title} onClick={() => update({ chapter: { ...s.chapter, [s.level]: i } })} aria-pressed={i === ci}
             className={`rounded-xl border px-3 py-2 text-left transition ${i === ci ? 'border-seal bg-seal/10' : 'border-white/10 bg-white/[0.02] hover:border-white/25'}`}>
-            <span className="block text-[11px] tabular-nums text-muted">Chapter {i + 1} · {bests[bestKey(i)] ? `best ${bests[bestKey(i)].score.toLocaleString()}` : `${c.words.length} words`}</span>
+            <span className="block text-[11px] tabular-nums text-muted">Chapter {i + 1} · {mine[`${s.level}.${i}`] ? `best ${mine[`${s.level}.${i}`].toLocaleString()}` : `${c.words.length} words`}</span>
             <span className="block truncate text-sm font-medium">{c.title}</span>
           </button>
         ))}
       </div>
+
+      <Heading>Leaderboards</Heading>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+          <p className="mb-3 truncate text-sm font-medium">Chapter {ci + 1} · {chapter.title}</p>
+          <Leaderboard rows={boards?.off ? null : boards?.board === board ? boards.chapter : undefined} modes empty="No scores yet. Set the first one." />
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+          <p className="mb-3 text-sm font-medium">Total <span className="text-muted">· best of every chapter, added up</span></p>
+          <Leaderboard rows={boards?.off ? null : boards?.total} empty="No scores yet." />
+        </div>
+      </div>
+      <p className="mt-2 text-xs text-muted/70">Your best per chapter counts, whatever pair you play. Moji members see your name and photo here.</p>
 
       <Heading>Show → Shoot</Heading>
       <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
@@ -217,12 +237,12 @@ export default function Range() {
         </div>
       </div>
 
-      <button onClick={launch} disabled={!fine || playable < 2}
+      <button onClick={launch} disabled={!fine || playable <= GAP}
         className="mt-10 flex h-14 w-full items-center justify-center gap-2 rounded-full bg-white text-base font-semibold text-black transition hover:bg-white/90 disabled:opacity-40">
         <CrosshairIcon size={18} />Launch
       </button>
       <p className="mt-3 text-center text-xs text-muted">
-        {!fine ? 'Word Range needs a mouse and keyboard.' : playable < 2 ? 'Not enough words in this chapter for this pair.' : `${playable} words · Esc pauses · R reloads`}
+        {!fine ? 'Word Range needs a mouse and keyboard.' : playable <= GAP ? `Needs at least ${GAP + 1} words that work for this pair.` : `1 minute · ${playable} words · Esc pauses · R reloads`}
       </p>
       <p className="mt-8 text-center text-[11px] leading-relaxed text-muted/60">
         HSK 1: HSK 3.0 syllabus (2025). N5 word list: Jonathan Waller, tanos.co.uk (CC BY).

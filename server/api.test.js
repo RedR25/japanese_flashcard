@@ -87,3 +87,42 @@ test('whitelist: pending is blocked, admin approves', async () => {
     await db.query('delete from users where id = any($1)', [[admin.id, user.id]]);
   }
 });
+
+test('word range leaderboards: best per chapter, total, members only', async () => {
+  const a = await seed('range-a@example.com', 'approved');
+  const b = await seed('range-b@example.com', 'approved');
+  const p = await seed('range-p@example.com', 'pending');
+  const board = `t${crypto.randomBytes(3).toString('hex')}.0`; // a board no real data uses
+  const other = board.replace(/\.0$/, '.1');
+  const post = (c, body) => fetch(`${API}/api/range`, { method: 'POST', headers: { ...c, ...json }, body: JSON.stringify(body) });
+  const get = (c, q) => fetch(`${API}/api/range?board=${q}`, { headers: c });
+  try {
+    assert.equal((await get({}, board)).status, 401, 'needs a session');
+    assert.equal((await get(p.cookie, board)).status, 403, 'pending cannot see boards');
+    assert.equal((await post(p.cookie, { board, score: 10, mode: 'mix' })).status, 403, 'pending cannot post');
+    assert.equal((await get(a.cookie, 'x')).status, 400, 'bad board');
+    for (const bad of [{ board: 'x', score: 1, mode: 'mix' }, { board, score: -1, mode: 'mix' }, { board, score: 1.5, mode: 'mix' },
+      { board, score: 20001, mode: 'mix' }, { board, score: '5', mode: 'mix' }, { board, score: 5, mode: '<b>' }, { board, score: 5 }]) {
+      assert.equal((await post(a.cookie, bad)).status, 400, JSON.stringify(bad));
+    }
+
+    assert.equal((await (await post(a.cookie, { board, score: 900, mode: 'zh>en' })).json()).prev, null, 'first score');
+    const lower = await (await post(a.cookie, { board, score: 500, mode: 'mix' })).json();
+    assert.equal(lower.prev, 900);
+    assert.deepEqual(lower.chapter.map((r) => [r.score, r.mode]), [[900, 'zh>en']], 'a worse run keeps the best and its pair');
+    await post(b.cookie, { board, score: 1200, mode: 'mix' });
+    await post(a.cookie, { board: other, score: 700, mode: 'ja>en' });
+
+    const view = await (await get(a.cookie, board)).json();
+    assert.deepEqual(view.chapter.map((r) => [r.score, r.rank, r.me]), [[1200, 1, false], [900, 2, true]]);
+    assert.deepEqual(Object.keys(view.chapter[0]).sort(), ['me', 'mode', 'name', 'picture', 'rank', 'score'], 'no email or id');
+    assert.deepEqual([view.mine[board], view.mine[other]], [900, 700]);
+    assert.equal(view.total.find((r) => r.me).score, 1600, 'total adds up each chapter best');
+
+    await db.query("update users set status = 'denied' where id = $1", [b.id]);
+    const after = await (await get(a.cookie, board)).json();
+    assert.deepEqual(after.chapter.map((r) => [r.score, r.rank]), [[900, 1]], 'revoked players drop off');
+  } finally {
+    await db.query('delete from users where id = any($1)', [[a.id, b.id, p.id]]);
+  }
+});

@@ -10,6 +10,8 @@ export const SIDES = [
   { id: 'vi', label: 'Tiếng Việt' },
 ];
 const LANG = Object.fromEntries(SIDES.map((s) => [s.id, s.lang]));
+const LABEL = Object.fromEntries(SIDES.map((s) => [s.id, s.label]));
+export const pairName = (p) => (p === 'mix' ? 'Mix' : p.split('>').map((id) => LABEL[id] ?? id).join(' → '));
 
 // A pair has to practise the level's language: HSK needs 中文 or Pinyin on one side, N5 needs 日本語 or Kana.
 export const pairAllowed = (lang, from, to) => from !== to && (LANG[from] === lang || LANG[to] === lang);
@@ -35,7 +37,7 @@ const shuffle = (a, rand) => {
   return b;
 };
 
-// One prompt per usable word, each with its pair (in a mix, a random pair that word works for).
+// One round: a prompt per usable word, each with its pair (in a mix, a random pair that word works for).
 export const buildQueue = (words, pairs, rand = Math.random) => shuffle(words.flatMap((word) => {
   const ok = pairs.filter(([from, to]) => usable([word], from, to).length);
   if (!ok.length) return [];
@@ -43,10 +45,17 @@ export const buildQueue = (words, pairs, rand = Math.random) => shuffle(words.fl
   return [{ word, from, to }];
 }), rand);
 
-// A missed word comes back 3-5 prompts later, like in Study.
-export const requeue = (queue, item, rand = Math.random) => {
-  const at = Math.min(queue.length, 3 + Math.floor(rand() * 3));
-  return [...queue.slice(0, at), item, ...queue.slice(at)];
+// A run lasts a minute and deals rounds back to back. A word comes back only after GAP other prompts.
+export const RUN_MS = 60_000;
+export const GAP = 3;
+// The first queued prompt whose word wasn't one of the last GAP prompts; when none can go, a fresh round joins the
+// queue. A missed word is put back at the front, so it returns as soon as GAP others have passed.
+export const nextPrompt = (queue, recent, round) => {
+  const blocked = new Set(recent.slice(-GAP));
+  let q = queue;
+  let i = q.findIndex((p) => !blocked.has(p.word));
+  if (i < 0) { q = [...q, ...round()]; i = q.findIndex((p) => !blocked.has(p.word)); }
+  return { item: q[i] ?? null, queue: i < 0 ? q : [...q.slice(0, i), ...q.slice(i + 1)] };
 };
 
 // The answer plus up to n-1 other chapter words. Every option shows a different label, and none shares the prompt.
@@ -56,22 +65,11 @@ export const pickOptions = ({ word, from, to }, words, n, rand = Math.random) =>
   return shuffle([word, ...others.slice(0, n - 1)], rand);
 };
 
-// Best score per setup (level, chapter, pair or mix), kept in this browser.
-const BEST_KEY = 'moji.range.best';
-export const loadBests = () => { try { return JSON.parse(localStorage.getItem(BEST_KEY)) || {}; } catch { return {}; } };
-export const saveBest = (key, result) => {
-  const all = loadBests();
-  const prev = all[key];
-  if (!prev || result.score > prev.score) {
-    all[key] = result;
-    try { localStorage.setItem(BEST_KEY, JSON.stringify(all)); } catch { /* storage blocked: no best this time */ }
-  }
-  return prev;
-};
-
-// 100 for the right word plus up to 100 for speed (gone after 3 s); a flat 50 once a wrong one was hit.
-export const hitPoints = (ms, hadWrong) => (hadWrong ? 50 : 100 + Math.round(100 * Math.max(0, 1 - ms / 3000)));
-export const WRONG_POINTS = 50;
+// Discs shrink away over LIFE_MS (their area falls linearly), and a clean hit scores the share that's left, up to 100.
+// After a wrong shot the word scores nothing; a wrong shot or a disc left to vanish costs PENALTY.
+export const LIFE_MS = 5000;
+export const PENALTY = 50;
+export const hitPoints = (ms, missed) => (missed ? 0 : Math.max(1, Math.round(100 * (1 - ms / LIFE_MS))));
 
 // ---- Aim, matched to CS2 ----
 
@@ -94,3 +92,14 @@ export const placeTargets = (n, radiusDeg, gapDeg, rand = Math.random) => {
   }
   return spots;
 };
+
+// ---- Leaderboards: the server keeps each member's best per chapter; board = 'level.chapter', e.g. 'hsk1.0' ----
+
+const call = async (path, body) => {
+  const res = await fetch(`/api${path}`, body && { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+};
+// { chapter: top 10 (+ your row), total: same for all chapters added up, mine: { board: your best } }; a post adds prev
+export const getBoards = (board) => call(`/range?board=${encodeURIComponent(board)}`);
+export const postScore = (board, score, mode) => call('/range', { board, score, mode });

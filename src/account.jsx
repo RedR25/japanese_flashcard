@@ -201,7 +201,7 @@ export function AuthDialog({ mode, setMode, onClose, account }) {
             {signup ? 'Already approved? ' : 'New to Moji? '}
             <button onClick={() => switchTo(signup ? 'signin' : 'signup')} className="font-medium text-ink underline-offset-2 hover:underline">{signup ? 'Sign in' : 'Request access'}</button>
           </p>
-          <p className="mt-3 text-center text-[11px] leading-relaxed text-muted/60">We store only your email, name, photo and which cards you’ve learned.</p>
+          <p className="mt-3 text-center text-[11px] leading-relaxed text-muted/60">We store only your email, name, photo, which cards you’ve learned and your Word Range best scores.</p>
         </div>
       )}
     </dialog>
