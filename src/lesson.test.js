@@ -28,6 +28,13 @@ test('study: an unflipped card never carries its answer, only hint material', ()
   assert.doesNotMatch(studyLesson(hira, hira.cards[0], { reverse: false, flipped: false }).text, /Hint material/, 'plain kana: nothing to add');
 });
 
+test('study: a vocab word is never read as a kana plus a voicing mark', () => {
+  const deck = { title: 'Words', cards: [['你', 'you'], ['你们', 'you (plural)'], ['は', 'ha'], ['ばんごう', 'number']].map(([glyph, answer], i) => ({ id: `w${i}`, glyph, answer })) };
+  for (const card of [deck.cards[1], deck.cards[3]]) {
+    assert.doesNotMatch(studyLesson(deck, card, { reverse: false, flipped: false }).text, /Hint material/, card.glyph);
+  }
+});
+
 test('study: a flipped card shows its back', () => {
   assert.match(studyLesson(hira, ji, { reverse: false, flipped: true }).text, /Card front: じ\nCard back \(flipped, visible\): ji$/);
   assert.match(studyLesson(rad, person, { reverse: false, flipped: true }).text,

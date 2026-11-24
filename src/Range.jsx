@@ -3,7 +3,7 @@ import { ArrowLeftRight, Crosshair as CrosshairIcon, MousePointer2, Plus, Target
 import hsk1 from './data/range/hsk1.js';
 import n5 from './data/range/n5.js';
 import Game, { Boards, Crosshair } from './range/Game.jsx';
-import { GAP, SIDES, STILL, cmPer360, discShades, fixTo, getBoards, pairAllowed, pairName, usable } from './range/logic.js';
+import { FONT, GAP, LANG_ATTR, SIDES, STILL, cmPer360, discShades, fixTo, getBoards, pairAllowed, pairName, usable } from './range/logic.js';
 
 // Word Range lobby: pick a level, a chapter, how words are shown (Show → Shoot) or a mix of pairs, and the aim
 // settings, with the leaderboards in a rail down the right. Launch opens the 3D range (range/Game.jsx).
@@ -13,8 +13,6 @@ const LEVELS = [
 ].map((l) => ({ ...l, words: l.chapters.reduce((n, c) => n + c.words.length, 0) }));
 const LANG_NAME = { zh: 'Chinese', ja: 'Japanese' };
 const SIDE = Object.fromEntries(SIDES.map((s) => [s.id, s]));
-const FONT = { zh: 'font-zh', ja: 'font-ja', kana: 'font-ja' };
-const LANG_ATTR = { zh: 'zh-Hans', ja: 'ja', kana: 'ja', vi: 'vi' };
 
 // Aim settings. sens and dpi stay as typed (strings) so decimals type cleanly, and are parsed when used. Disc size and
 // ammo aren't settings: every run has medium discs and ammo that never runs out.

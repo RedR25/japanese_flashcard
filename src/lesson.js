@@ -16,8 +16,8 @@ export function studyLesson(deck, card, { reverse, flipped }) {
 
 // Facts a hint can be built from without the answer, so the model doesn't guess them (it once called じ "ひ + dakuten").
 function hintFor(deck, card) {
-  const [base, mark] = card.glyph.normalize('NFD'); // じ → し + combining dakuten
-  const plain = mark && deck.cards.find((c) => c.glyph === base);
+  const [base, mark, ...rest] = card.glyph.normalize('NFD'); // じ → し + combining dakuten (a word like 你们 is no kana + mark)
+  const plain = /^[゙゚]$/.test(mark ?? '') && !rest.length && deck.cards.find((c) => c.glyph === base);
   if (plain) return `\nHint material: it's ${base} (${plain.answer}) plus the ${mark === '゙' ? 'dakuten ゛' : 'handakuten ゜'} mark.`;
   if (card.examples?.length) return `\nHint material: characters that contain it: ${card.examples.join(' ')}`;
   return '';

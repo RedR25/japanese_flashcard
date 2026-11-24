@@ -11,6 +11,9 @@ export const SIDES = [
 ];
 const LANG = Object.fromEntries(SIDES.map((s) => [s.id, s.lang]));
 const LABEL = Object.fromEntries(SIDES.map((s) => [s.id, s.label]));
+// How a side's text is set: a CJK font, and the lang attribute (the rest inherit the page's).
+export const FONT = { zh: 'font-zh', ja: 'font-ja', kana: 'font-ja' };
+export const LANG_ATTR = { zh: 'zh-Hans', ja: 'ja', kana: 'ja', vi: 'vi' };
 export const pairName = (p) => (p === 'mix' ? 'Mix' : p.split('>').map((id) => LABEL[id] ?? id).join(' → '));
 
 // A pair has to practise the level's language: HSK needs 中文 or Pinyin on one side, N5 needs 日本語 or Kana.

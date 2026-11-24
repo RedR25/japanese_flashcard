@@ -1,12 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Trophy } from 'lucide-react';
-import { HINT, PENALTY, RUN_MS, SIDES, buildQueue, cmPer360, getBoards, hintFor, hitPoints, nextPrompt, pairName, pickOptions, postScore } from './logic.js';
+import { FONT, HINT, LANG_ATTR, PENALTY, RUN_MS, SIDES, buildQueue, cmPer360, getBoards, hintFor, hitPoints, nextPrompt, pairName, pickOptions, postScore } from './logic.js';
 import { crosshairRects } from './crosshair.js';
 
 // The Word Range run: loads the 3D engine (three.js, only now), deals one chapter's words for a minute, draws the HUD.
 const SIDE = Object.fromEntries(SIDES.map((s) => [s.id, s]));
-const FONT = { zh: 'font-zh', ja: 'font-ja', kana: 'font-ja' };
-const LANG = { zh: 'zh-Hans', ja: 'ja', kana: 'ja', vi: 'vi' };
 const chromium = () => Boolean(navigator.userAgentData?.brands?.some((b) => /Chromium/.test(b.brand)));
 
 // A disc shows the word on the shoot side, plus its reading when that doesn't give the answer away.
@@ -97,7 +95,7 @@ export function Boards({ title, chapter, total }) {
 const clock = (ms) => { const s = Math.ceil(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 // Blurred enough that Esc can't be used to study the discs.
 const Panel = ({ children }) => <div className="absolute inset-0 grid place-items-center bg-black/60 p-6 backdrop-blur-md">{children}</div>;
-const Say = ({ side, className = '', children }) => <span lang={LANG[side]} className={`${FONT[side] || ''} ${className}`}>{children}</span>;
+const Say = ({ side, className = '', children }) => <span lang={LANG_ATTR[side]} className={`${FONT[side] || ''} ${className}`}>{children}</span>;
 
 export default function Game({ run, onAgain, onExit }) {
   const canvas = useRef(null);

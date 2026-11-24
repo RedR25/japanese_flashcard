@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeftRight, Check, Layers, LayoutGrid, Lock, Rocket, RotateCcw, X } from 'lucide-react';
 import { DECKS, READINGS, fontOf, getDeck, langAttr, withReading } from './decks';
 import { AuthDialog, useAccount } from './account';
@@ -7,8 +7,11 @@ import Asteroids from './Asteroids';
 import Admin from './Admin';
 import Dashboard, { Emblem, Panel, Shell } from './Dashboard';
 import { browseLesson, studyLesson } from './lesson';
+import { VOCAB, vocabDeck, vocabPrefs, wordId } from './vocab';
+import { FONT, LANG_ATTR, SIDES, fixTo, pairAllowed } from './range/logic.js';
 
 const Range = lazy(() => import('./Range')); // its word lists (~100 KB) load only when the range is opened
+const Loading = () => <div className="grid place-items-center py-24"><span className="h-6 w-6 animate-spin rounded-full border-2 border-white/20 border-t-white" aria-label="Loading" /></div>;
 
 const load = (k, fallback) => {
   try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fallback; } catch { return fallback; }
@@ -67,6 +70,7 @@ export default function App() {
   const play = route[0] === 'play';
   const admin = route[0] === 'admin';
   const range = route[0] === 'range';
+  const vocab = route[0] === 'v' && VOCAB.find((l) => l.id === route[1]);
   // Whitelist: only approved accounts get past the landing page. No client ID (local dev) = open.
   const member = account.approved || !account.enabled;
   useEffect(() => { if (deck) save('moji.last', deck.id); }, [deck]); // the dashboard's "Continue" deck
@@ -75,13 +79,14 @@ export default function App() {
   if (account.enabled && !account.ready) { // wait for /api/me so members don't see the landing page flash first
     page = <main className="grid min-h-screen place-items-center"><span className="h-6 w-6 animate-spin rounded-full border-2 border-white/20 border-t-white" aria-label="Loading" /></main>;
   } else if (!member) {
-    page = deck || play || range || admin ? <Gate account={account} openAuth={setAuth} /> : <Landing known={known} account={account} openAuth={setAuth} />;
+    page = deck || vocab || play || range || admin ? <Gate account={account} openAuth={setAuth} /> : <Landing known={known} account={account} openAuth={setAuth} />;
   } else {
     page = (
-      <Shell here={deck ? deck.id : play ? 'play' : range ? 'range' : admin ? 'admin' : 'home'} account={account} known={known} lesson={lesson}>
+      <Shell here={deck ? deck.id : vocab ? vocab.id : play ? 'play' : range ? 'range' : admin ? 'admin' : 'home'} account={account} known={known} lesson={lesson}>
         {admin ? <Admin account={account} />
           : play ? <Asteroids key={route[1] || ''} initialDeck={getDeck(route[1])?.id} reading={reading} setReading={chooseReading} />
-          : range ? <Suspense fallback={<div className="grid place-items-center py-24"><span className="h-6 w-6 animate-spin rounded-full border-2 border-white/20 border-t-white" aria-label="Loading" /></div>}><Range /></Suspense>
+          : range ? <Suspense fallback={<Loading />}><Range /></Suspense>
+          : vocab ? <Suspense fallback={<Loading />}><Vocab key={vocab.id} level={vocab} tab={route[2] === 'browse' ? 'browse' : 'study'} known={known} updateKnown={updateKnown} setLesson={setLesson} /></Suspense>
           : deck ? <DeckView deck={deck} tab={route[2] === 'browse' ? 'browse' : 'study'} known={known} updateKnown={updateKnown}
             reverse={reverse} toggleReverse={toggleReverse} reading={reading} setReading={chooseReading} setLesson={setLesson} />
           : <Dashboard known={known} account={account} last={getDeck(load('moji.last', null)) || DECKS[0]} />}
@@ -190,8 +195,82 @@ function Gate({ account, openAuth }) {
   );
 }
 
-function DeckView({ deck, tab, known, updateKnown, reverse, toggleReverse, reading, setReading, setLesson }) {
-  const font = fontOf(deck);
+// Vocab: one chapter of a word list (vocab.js) as flip cards, in the pair of sides you pick (front → back), on the deck
+// page's Study and Browse. The list loads on first visit; the chapter and pair are remembered per level.
+const lists = new Map(); // level id → promise of its chapters (null if the list failed to load), fetched once
+const LABEL = 'w-16 shrink-0 text-xs font-semibold uppercase tracking-wider text-muted';
+const chip = (on) => `rounded-full border px-3.5 py-1.5 text-sm transition disabled:pointer-events-none disabled:opacity-30 ${on ? 'border-seal bg-seal/10 text-ink' : 'border-white/10 text-muted hover:border-white/25 hover:text-ink'}`;
+const cjk = (side) => (side === 'zh' || side === 'ja' ? side : null); // only the 中文 and 日本語 labels are CJK text
+
+function Vocab({ level, tab, known, updateKnown, setLesson }) {
+  if (!lists.has(level.id)) lists.set(level.id, level.load().then((m) => m.default, () => null));
+  const chapters = use(lists.get(level.id));
+  const [pref, setPref] = useState(() => vocabPrefs(level, load('moji.vocab', {})));
+  const ci = Math.min(pref.chapter, (chapters?.length ?? 1) - 1);
+  const { from, to } = pref;
+  const deck = useMemo(() => chapters && vocabDeck(level, chapters, ci, from, to), [level, chapters, ci, from, to]);
+  if (!chapters) {
+    return (
+      <p className="py-24 text-center text-sm text-muted">
+        Couldn’t load the {level.title} words.{' '}
+        <button onClick={() => window.location.reload()} className="font-semibold text-ink hover:underline">Reload</button>
+      </p>
+    );
+  }
+
+  const update = (patch) => setPref((p) => {
+    const next = { ...p, ...patch };
+    save('moji.vocab', { ...load('moji.vocab', {}), [level.id]: next });
+    return next;
+  });
+  const example = deck.cards[0];
+  return (
+    <DeckView deck={deck} tab={tab} known={known} updateKnown={updateKnown} reverse={false} setLesson={setLesson}>
+      <div className="mb-6 grid gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+        <label className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <span className={LABEL}>Chapter</span>
+          <select value={ci} onChange={(e) => update({ chapter: Number(e.target.value) })}
+            className="h-10 w-full rounded-xl border border-white/10 bg-black/20 px-3 text-sm text-ink outline-none transition focus:border-white/25 sm:w-auto">
+            {chapters.map((c, i) => (
+              <option key={i} value={i}>{i + 1}. {c.title} · {c.words.filter((w) => known.has(wordId(level, w))).length}/{c.words.length}</option>
+            ))}
+          </select>
+        </label>
+        {[['Front', from, (id) => update({ from: id, to: fixTo(level.lang, id, to) }), () => true],
+          ['Back', to, (id) => update({ to: id }), (id) => pairAllowed(level.lang, from, id)]].map(([name, value, pick, ok]) => (
+          <div key={name} role="group" aria-label={name} className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <span className={LABEL}>{name}</span>
+            <div className="flex flex-wrap gap-2">
+              {SIDES.map((x) => (
+                <button key={x.id} onClick={() => pick(x.id)} disabled={!ok(x.id)} aria-pressed={value === x.id} className={chip(value === x.id)}>
+                  <span lang={LANG_ATTR[cjk(x.id)]} className={FONT[cjk(x.id)]}>{x.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+        <div className="flex items-center gap-3 border-t border-white/[0.06] pt-3">
+          <button onClick={() => update({ from: to, to: from })} aria-label="Swap front and back" title="Swap front and back"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-white/10 text-muted transition hover:border-white/25 hover:text-ink"><ArrowLeftRight size={16} /></button>
+          {example && (
+            <span className="min-w-0 truncate text-lg font-semibold">
+              <span lang={deck.glyphAttr} className={deck.glyphFont}>{example.glyph}</span>
+              <span className="mx-2 text-muted">→</span>
+              <span lang={deck.answerAttr} className={deck.answerFont}>{example.answer}</span>
+            </span>
+          )}
+          <span className="ml-auto shrink-0 text-xs tabular-nums text-muted">{deck.cards.length} cards</span>
+        </div>
+      </div>
+    </DeckView>
+  );
+}
+
+// A deck's page: header and tabs, an optional toolbar (children), then Study or Browse. Vocab decks (vocab.js) bring
+// their own link and a font per side, and have no Asteroid Shooter tab.
+function DeckView({ deck, tab, known, updateKnown, reverse, toggleReverse, reading, setReading, setLesson, children }) {
+  const font = deck.glyphFont ?? fontOf(deck);
+  const href = deck.href ?? `#/d/${deck.id}`;
   const learned = deck.cards.filter((c) => known.has(c.id)).length;
   const tabClass = (t) => `flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition ${tab === t ? 'bg-card text-ink shadow-sm' : 'text-muted hover:text-ink'}`;
 
@@ -201,16 +280,17 @@ function DeckView({ deck, tab, known, updateKnown, reverse, toggleReverse, readi
         <Emblem deck={deck} className="h-12 w-12 rounded-2xl text-xl" />
         <div className="mr-auto min-w-0">
           <h1 className="flex items-baseline gap-2 text-2xl font-semibold tracking-tight">
-            {deck.title}<span className={`${font} text-base font-medium text-muted`} lang={langAttr(deck)}>{deck.native}</span>
+            {deck.title}<span className={`${fontOf(deck)} text-base font-medium text-muted`} lang={langAttr(deck)}>{deck.native}</span>
           </h1>
           <p className="text-xs tabular-nums text-muted">{learned} of {deck.cards.length} learned</p>
         </div>
         <nav className="flex rounded-xl bg-line/60 p-1">
-          <a href={`#/d/${deck.id}`} className={tabClass('study')}><Layers size={15} />Study</a>
-          <a href={`#/d/${deck.id}/browse`} className={tabClass('browse')}><LayoutGrid size={15} />Browse</a>
-          <a href={`#/play/${deck.id}`} className={tabClass('play')}><Rocket size={15} />Play</a>
+          <a href={href} className={tabClass('study')}><Layers size={15} />Study</a>
+          <a href={`${href}/browse`} className={tabClass('browse')}><LayoutGrid size={15} />Browse</a>
+          {!deck.href && <a href={`#/play/${deck.id}`} className={tabClass('play')}><Rocket size={15} />Play</a>}
         </nav>
       </header>
+      {children}
 
       {tab === 'study' ? (
         <Study key={`${deck.id}-${reverse}-${reading}`} deck={deck} font={font} reverse={reverse} toggleReverse={toggleReverse} known={known} updateKnown={updateKnown}
@@ -323,9 +403,11 @@ function Study({ deck, font, reverse, toggleReverse, known, updateKnown, reading
                 ))}
               </div>
             )}
-            <button onClick={toggleReverse} className={opt(false)} aria-pressed={reverse}>
-              <ArrowLeftRight size={15} />{reverse ? 'Answer → Character' : 'Character → Answer'}
-            </button>
+            {toggleReverse && (
+              <button onClick={toggleReverse} className={opt(false)} aria-pressed={reverse}>
+                <ArrowLeftRight size={15} />{reverse ? 'Answer → Character' : 'Character → Answer'}
+              </button>
+            )}
             <button onClick={() => { const next = !unlearnedOnly; setUnlearnedOnly(next); restart(next ? unlearnedCards : deck.cards); }}
               className={opt(unlearnedOnly)} aria-pressed={unlearnedOnly}>
               Unlearned only<span className="ml-auto tabular-nums">{unlearnedCards.length}</span>
@@ -347,10 +429,18 @@ function Study({ deck, font, reverse, toggleReverse, known, updateKnown, reading
 
 const Kbd = ({ children }) => <kbd className="rounded border border-line bg-card px-1.5 py-0.5 font-sans text-[11px]">{children}</kbd>;
 
-function Glyph({ card, deck, font, size }) {
+// Font size for a word: up to `max` rem, smaller the longer it is so it stays on one line of its card (the nearest
+// [container-type:inline-size], less `pad` rem of padding), counting 1em per CJK character and ~0.6em per Latin one.
+// It stops shrinking at 1.25rem and wraps instead. A single character keeps its class size.
+const fit = (text, max, pad = 3) => {
+  const ems = [...text].reduce((n, ch) => n + (ch >= '⺀' ? 1 : 0.6), 0);
+  return ems > 1 ? { fontSize: `clamp(1.25rem, calc((100cqw - ${pad}rem) / ${ems.toFixed(2)}), ${max}rem)` } : undefined;
+};
+
+function Glyph({ card, deck, font, size, max }) {
   return (
-    <span className="flex items-end justify-center gap-3" lang={langAttr(deck)}>
-      <span className={`${font} ${size} font-bold leading-none`}>{card.glyph}</span>
+    <span className="flex items-end justify-center gap-3" lang={deck.glyphAttr ?? langAttr(deck)}>
+      <span className={`${font} ${size} text-balance font-bold leading-none`} style={fit(card.glyph, max)}>{card.glyph}</span>
       {card.glyphAlt && <span className={`${font} text-3xl font-medium text-muted`}>{card.glyphAlt}</span>}
     </span>
   );
@@ -359,7 +449,7 @@ function Glyph({ card, deck, font, size }) {
 function Flashcard({ card, deck, font, reverse, flipped, onFlip }) {
   const face = 'face absolute inset-0 flex flex-col items-center justify-center rounded-3xl border border-line bg-card p-6 shadow-[0_8px_30px_-12px_rgb(0_0_0/0.25)]';
   return (
-    <button onClick={onFlip} className="flip h-[22rem] w-full max-w-md rounded-3xl sm:h-[24rem]" aria-label={flipped ? 'Hide answer' : 'Show answer'}>
+    <button onClick={onFlip} className="flip h-[22rem] w-full max-w-md rounded-3xl [container-type:inline-size] sm:h-[24rem]" aria-label={flipped ? 'Hide answer' : 'Show answer'}>
       <span className={`flip-inner relative block h-full w-full ${flipped ? 'is-flipped' : ''}`}>
         <span className={face}>
           {reverse ? (
@@ -368,13 +458,14 @@ function Flashcard({ card, deck, font, reverse, flipped, onFlip }) {
               {card.answerSub && <span className="mt-3 text-sm text-muted">{card.answerSub}</span>}
             </>
           ) : (
-            <Glyph card={card} deck={deck} font={font} size="text-[8rem]" />
+            <Glyph card={card} deck={deck} font={font} size="text-[8rem]" max={8} />
           )}
           <span className="absolute bottom-5 text-xs text-muted/70">tap to flip</span>
         </span>
         <span className={`${face} face-back border-seal/30`}>
-          <Glyph card={card} deck={deck} font={font} size={reverse ? 'text-[7rem]' : 'text-6xl'} />
-          <span className={`mt-5 font-semibold ${reverse ? 'text-2xl' : 'text-5xl'}`}>{card.answer}</span>
+          <Glyph card={card} deck={deck} font={font} size={reverse ? 'text-[7rem]' : 'text-6xl'} max={reverse ? 7 : 3.75} />
+          <span className={`mt-5 text-balance font-semibold ${deck.answerFont ?? ''} ${reverse ? 'text-2xl' : 'text-5xl'}`} lang={deck.answerAttr}
+            style={fit(card.answer, reverse ? 1.5 : 3)}>{card.answer}</span>
           {card.answerSub && <span className="mt-2 text-sm text-muted">{card.answerSub}</span>}
           {card.examples && (
             <span className={`${font} mt-5 flex gap-3 text-2xl text-ink/80`} lang={langAttr(deck)}>
@@ -388,7 +479,7 @@ function Flashcard({ card, deck, font, reverse, flipped, onFlip }) {
 }
 
 function Browse({ deck, font, known, updateKnown, setLesson }) {
-  const rich = Boolean(deck.cards[0]?.answerSub);
+  const rich = deck.rich || Boolean(deck.cards[0]?.answerSub);
   const learned = deck.cards.filter((c) => known.has(c.id)).length;
   useEffect(() => {
     setLesson(browseLesson(deck, known));
@@ -409,12 +500,12 @@ function Browse({ deck, font, known, updateKnown, setLesson }) {
           return (
             <li key={c.id}>
               <button onClick={() => updateKnown((s) => (isKnown ? s.delete(c.id) : s.add(c.id)))} aria-pressed={isKnown}
-                className={`relative flex h-full w-full flex-col items-center rounded-xl border bg-card px-2 py-3 text-center transition hover:border-ink/30 ${isKnown ? 'border-jade/50' : 'border-line'}`}>
+                className={`relative flex h-full w-full flex-col items-center rounded-xl border bg-card px-2 py-3 text-center transition [container-type:inline-size] hover:border-ink/30 ${isKnown ? 'border-jade/50' : 'border-line'}`}>
                 {isKnown && <Check size={12} className="absolute right-2 top-2 text-jade" />}
-                <span className={`${font} font-bold leading-tight ${rich ? 'text-4xl' : 'text-3xl'}`} lang={langAttr(deck)}>
+                <span className={`${font} font-bold leading-tight ${rich ? 'text-4xl' : 'text-3xl'}`} lang={deck.glyphAttr ?? langAttr(deck)} style={fit(c.glyph, rich ? 2.25 : 1.875, 1)}>
                   {c.glyph}{c.glyphAlt && <span className="ml-1.5 text-xl font-medium text-muted">{c.glyphAlt}</span>}
                 </span>
-                <span className={`mt-1.5 font-medium ${rich ? 'text-sm' : 'text-xs text-muted'}`}>{c.answer}</span>
+                <span className={`mt-1.5 font-medium ${deck.answerFont ?? ''} ${rich ? 'text-sm' : 'text-xs text-muted'}`} lang={deck.answerAttr}>{c.answer}</span>
                 {rich && <span className="mt-0.5 text-xs text-muted">{c.answerSub}</span>}
               </button>
             </li>
