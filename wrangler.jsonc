@@ -1,0 +1,14 @@
+// Moji's frontend on Cloudflare: the built app (dist) as static assets, and worker/index.js for /api/* (forwarded to the
+// Railway API). Deploy: npm run build && npx -y wrangler@4 deploy
+// Once the domain is on Cloudflare, "routes" gets { "pattern": "<domain>", "custom_domain": true } and "workers_dev"
+// turns off, so the site is only reachable through the domain, where the firewall, bot and rate-limit rules apply.
+{
+  "name": "moji",
+  "main": "worker/index.js",
+  "compatibility_date": "2025-11-01",
+  "assets": { "directory": "./dist" },
+  "vars": { "API_ORIGIN": "https://moji-api-production.up.railway.app" },
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": { "enabled": true }
+}

@@ -1,11 +1,12 @@
-/* global process */
+/* global process, Buffer */
 import crypto from 'node:crypto';
 import express from 'express';
 import pg from 'pg';
 import { OAuth2Client } from 'google-auth-library';
 
 const { DATABASE_URL, GOOGLE_CLIENT_ID, ADMIN_EMAILS = '', PORT = 3000, NODE_ENV,
-  OPENROUTER_API_KEY, OPENROUTER_MODEL = 'nvidia/nemotron-3.5-lightning:free', CHAT_SYSTEM_PROMPT } = process.env;
+  OPENROUTER_API_KEY, OPENROUTER_MODEL = 'nvidia/nemotron-3.5-lightning:free', CHAT_SYSTEM_PROMPT,
+  ORIGIN_SECRET, TURNSTILE_SECRET } = process.env;
 if (!DATABASE_URL) throw new Error('DATABASE_URL is required');
 
 const db = new pg.Pool({ connectionString: DATABASE_URL });
@@ -60,7 +61,8 @@ const readToken = (req) => {
   return null;
 };
 
-// Requests arrive via Vercel's /api rewrite, so this cookie lives on the Vercel domain and stays first-party.
+// Requests arrive through the site's own /api proxy (the Cloudflare Worker; Vercel's rewrite before it), so this cookie
+// lives on the site's domain and stays first-party.
 const setCookie = (res, value, maxAge) => res.append('Set-Cookie',
   `${COOKIE}=${value}; Path=/api; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${NODE_ENV === 'production' ? '; Secure' : ''}`);
 
@@ -69,6 +71,16 @@ const validKnown = (known) =>
 
 const app = express();
 app.disable('x-powered-by');
+// Behind Cloudflare every request comes through the Worker (worker/index.js), which adds this shared secret, so the
+// firewall, bot and rate-limit rules can't be skipped by calling Railway directly. Unset = not enforced (local runs,
+// and until the switch). The health check stays open because Railway calls it directly.
+const ORIGIN = ORIGIN_SECRET ? Buffer.from(ORIGIN_SECRET) : null;
+app.use((req, res, next) => {
+  if (!ORIGIN || req.path === '/api/health') return next();
+  const given = Buffer.from(req.get('x-origin-auth') ?? '');
+  if (given.length === ORIGIN.length && crypto.timingSafeEqual(given, ORIGIN)) return next();
+  res.status(403).json({ error: 'forbidden' });
+});
 app.use((req, res, next) => {
   res.set({ 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
   // State-changing requests must be JSON: a form on another site can't send that without a CORS preflight.
@@ -97,12 +109,32 @@ const admin = (req, res, next) => (isAdmin(req.user.email) ? next() : res.status
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
+// Turnstile, Cloudflare's captcha, guards sign-in and sign-up: the dialog sends the token its widget earned and
+// Cloudflare confirms it (once; tokens are single use). Unset secret = not checked (local runs, and until the switch).
+// Fails closed if Cloudflare can't be reached, which also means the site itself is down.
+const human = async (token) => {
+  if (!TURNSTILE_SECRET) return true;
+  if (typeof token !== 'string' || !token || token.length > 2048) return false;
+  try {
+    const r = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ secret: TURNSTILE_SECRET, response: token }),
+      signal: AbortSignal.timeout(5000),
+    });
+    return (await r.json()).success === true;
+  } catch {
+    return false;
+  }
+};
+
 app.post('/api/auth/google', async (req, res) => {
   if (!GOOGLE_CLIENT_ID) return res.status(503).json({ error: 'google login not configured' });
-  const { accessToken, mode = 'signin' } = req.body ?? {};
+  const { accessToken, mode = 'signin', turnstile } = req.body ?? {};
   if (typeof accessToken !== 'string' || accessToken.length > 4096 || !['signin', 'signup'].includes(mode)) {
     return res.status(400).json({ error: 'bad request' });
   }
+  if (!(await human(turnstile))) return res.status(403).json({ error: 'captcha' });
 
   // The custom button uses Google's token flow, so we get an access token, not an ID token.
   // The aud check is what stops a token minted for some other app being replayed here.
@@ -162,6 +194,10 @@ app.put('/api/progress', auth, async (req, res) => {
     [req.user.id, [...new Set(known)]]);
   res.json({ ok: true });
 });
+
+// Cloudflare Access (Zero Trust) guards /api/admin/* at the edge. When the admin page can't load it links here: the
+// visit passes through Access's sign-in, and once that's done this just sends the browser back to the admin page.
+app.get('/api/admin/unlock', (_req, res) => res.redirect('/#/admin'));
 
 app.get('/api/admin/users', auth, admin, async (_req, res) => {
   const { rows } = await db.query(

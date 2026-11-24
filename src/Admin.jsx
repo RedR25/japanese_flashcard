@@ -71,7 +71,12 @@ export default function Admin({ account }) {
         ))}
       </div>
 
-      {error && <p role="alert" className="mt-3 rounded-xl bg-seal/10 px-3 py-2 text-xs text-seal">{error}</p>}
+      {error && (
+        <p role="alert" className="mt-3 rounded-xl bg-seal/10 px-3 py-2 text-xs text-seal">
+          {error}
+          {users === null && <> Admin sits behind Cloudflare Access: <a href="/api/admin/unlock" className="font-semibold underline underline-offset-2">sign in to Access</a>, then you’re sent back here.</>}
+        </p>
+      )}
 
       <ul className="mt-4 space-y-2">
         {users === null && !error && <li className="p-6 text-center text-sm text-muted">Loading…</li>}

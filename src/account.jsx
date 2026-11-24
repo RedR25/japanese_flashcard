@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, Cloud, LogOut, ShieldCheck, X } from 'lucide-react';
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+const SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY; // Cloudflare Turnstile; unset = no captcha
 
 const api = async (path, body, method = 'POST') => {
   const res = await fetch(`/api${path}`, body === undefined ? {} : {
@@ -21,6 +22,45 @@ const loadGis = () => (gis ??= new Promise((resolve, reject) => {
   s.onerror = () => { gis = null; reject(new Error('Google sign-in failed to load')); };
   document.head.append(s);
 }));
+
+let ts;
+const loadTurnstile = () => (ts ??= new Promise((resolve, reject) => {
+  const s = Object.assign(document.createElement('script'), { src: 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit', async: true });
+  s.onload = () => resolve(window.turnstile);
+  s.onerror = () => { ts = null; reject(new Error('captcha')); };
+  document.head.append(s);
+}));
+
+// Turnstile on sign-in and sign-up (when a site key is set): it checks in the background while the dialog is open and
+// shows a checkbox only if Cloudflare isn't sure. A token is good for one sign-in call, so token() hands over the
+// current one (or waits for the next) and spend() starts a fresh check.
+function useTurnstile(open) {
+  const box = useRef(null);
+  const s = useRef({ id: null, token: null, waiting: [], broken: false }).current;
+  useEffect(() => {
+    if (!SITE_KEY || !open) return undefined;
+    let live = true;
+    const fail = () => s.waiting.splice(0).forEach((w) => w.reject(new Error('captcha')));
+    loadTurnstile().then((t) => {
+      if (!live) return;
+      s.id = t.render(box.current, {
+        sitekey: SITE_KEY, theme: 'dark', size: 'flexible', appearance: 'interaction-only', 'refresh-expired': 'auto',
+        callback: (token) => { Object.assign(s, { token, broken: false }); s.waiting.splice(0).forEach((w) => w.resolve(token)); },
+        'expired-callback': () => { s.token = null; },
+        'error-callback': () => { s.broken = true; fail(); return true; }, // it retries by itself; until then sign-in says so
+      });
+    }, () => { s.broken = true; fail(); }); // script blocked (ad blocker, offline): sign-in says so instead of waiting
+    return () => { live = false; if (s.id !== null) window.turnstile.remove(s.id); Object.assign(s, { id: null, token: null, broken: false }); fail(); };
+  }, [open, s]);
+  const token = useCallback(() => (!SITE_KEY ? Promise.resolve(undefined) : s.token ? Promise.resolve(s.token)
+    : s.broken ? Promise.reject(new Error('captcha'))
+    : new Promise((resolve, reject) => s.waiting.push({ resolve, reject }))), [s]);
+  const spend = useCallback(() => { // used or failed: start a fresh check (the script itself failing stays failed)
+    s.token = null;
+    if (s.id !== null) { s.broken = false; window.turnstile.reset(s.id); }
+  }, [s]);
+  return { box, token, spend };
+}
 
 // Signed out: progress lives in localStorage only. Signed in: merged with the account, then synced on every change.
 export function useAccount(known, replaceKnown) {
@@ -65,8 +105,8 @@ export function useAccount(known, replaceKnown) {
   }, [notice]);
 
   // mode 'signin' 404s (no_account) for unknown Google accounts; 'signup' creates the account, or just signs in if it exists.
-  const authenticate = useCallback(async (accessToken, mode) => {
-    const r = await api('/auth/google', { accessToken, mode });
+  const authenticate = useCallback(async (accessToken, mode, turnstile) => {
+    const r = await api('/auth/google', { accessToken, mode, turnstile });
     adopt(r);
     const first = (r.user.name || r.user.email).split(' ')[0];
     setNotice(r.user.status === 'approved' ? `Welcome back, ${first}`
@@ -98,6 +138,7 @@ const ERRORS = {
   'invalid google token': 'Google couldn’t verify that sign-in. Try again.',
   'unverified google account': 'Google didn’t share a verified email. Allow email access and try again.',
   'google login not configured': 'Sign-in is not available right now.',
+  captcha: 'Couldn’t confirm you’re human. Wait a moment and try again.',
 };
 
 export function AuthDialog({ mode, setMode, onClose, account }) {
@@ -107,6 +148,7 @@ export function AuthDialog({ mode, setMode, onClose, account }) {
   const [error, setError] = useState(null);
   const [pending, setPending] = useState(null); // { token, email } after a sign-in hit no_account
   const open = mode !== null;
+  const { box: captchaBox, token: captcha, spend } = useTurnstile(open);
 
   useEffect(() => {
     const d = ref.current;
@@ -118,15 +160,16 @@ export function AuthDialog({ mode, setMode, onClose, account }) {
   const submit = useCallback(async (token, m) => {
     setBusy(true); setError(null);
     try {
-      await account.authenticate(token, m);
+      await account.authenticate(token, m, await captcha());
       onClose();
     } catch (e) {
       if (e.data?.error === 'no_account') { setPending({ token, email: e.data.email }); setMode('signup'); }
       else setError(ERRORS[e.message] || 'Something went wrong. Check your connection and try again.');
     } finally {
+      spend();
       setBusy(false);
     }
-  }, [account, onClose, setMode]);
+  }, [account, onClose, setMode, captcha, spend]);
 
   // Preload GIS on open: requestAccessToken must run synchronously inside the click or the popup gets blocked.
   const latest = useRef();
@@ -187,6 +230,7 @@ export function AuthDialog({ mode, setMode, onClose, account }) {
             </button>
           )}
 
+          {SITE_KEY && <div ref={captchaBox} className="mt-3" />}
           {error && <p role="alert" className="mt-3 rounded-xl bg-seal/10 px-3 py-2 text-xs text-seal">{error}</p>}
 
           {signup && (
