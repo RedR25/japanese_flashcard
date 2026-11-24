@@ -19,6 +19,8 @@
 /* Dashboard panels fade up in order on load; each sets --i. */
 @keyframes enter { from { opacity: 0; transform: translateY(10px); } }
 .enter { animation: enter 0.45s cubic-bezier(.2,.8,.2,1) calc(var(--i, 0) * 70ms) backwards; }
+@keyframes pop { from { opacity: 0; transform: translateY(-4px) scale(0.98); } }
+.pop { animation: pop 140ms cubic-bezier(.2,.8,.2,1); transform-origin: top; }
 
 /* Word Range: points float up from the crosshair (just fade with reduced motion) */
 @keyframes range-pop { from { opacity: 1; transform: translate(-50%, 0); } to { opacity: 0; transform: translate(-50%, -36px); } }
@@ -68,6 +70,6 @@ button { -webkit-tap-highlight-color: transparent; }
 
 @media (prefers-reduced-motion: reduce) {
   .flip-inner { transition: none; }
-  .animate-float, .starfield, .animate-shake, .enter { animation: none; }
+  .animate-float, .starfield, .animate-shake, .enter, .pop { animation: none; }
   html { scroll-behavior: auto; }
 }

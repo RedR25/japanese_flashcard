@@ -1,5 +1,5 @@
-import { lazy, Suspense, use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeftRight, Check, Layers, LayoutGrid, Lock, Rocket, RotateCcw, X } from 'lucide-react';
+import { lazy, Suspense, use, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeftRight, Check, ChevronDown, Layers, LayoutGrid, Lock, Rocket, RotateCcw, X } from 'lucide-react';
 import { DECKS, READINGS, fontOf, getDeck, langAttr, withReading } from './decks';
 import { AuthDialog, useAccount } from './account';
 import Landing from './Landing';
@@ -231,19 +231,16 @@ function Vocab({ vocab, tab, known, updateKnown, setLesson }) {
   return (
     <DeckView deck={deck} tab={tab} known={known} updateKnown={updateKnown} reverse={false} setLesson={setLesson}>
       <div className="mb-6 grid gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-        <label className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <span className={LABEL}>Chapter</span>
-          <select value={`${book.level.id}.${ci}`} onChange={(e) => { const [level, chapter] = e.target.value.split('.'); update({ level, chapter: Number(chapter) }); }}
-            className="h-10 w-full rounded-xl border border-white/10 bg-black/20 px-3 text-sm text-ink outline-none transition focus:border-white/25 sm:w-auto">
-            {books.map(({ level, chapters }) => (
-              <optgroup key={level.id} label={level.title}>
-                {chapters.map((c, i) => (
-                  <option key={i} value={`${level.id}.${i}`}>{i + 1}. {c.title} · {c.words.filter((w) => known.has(wordId(level, w))).length}/{c.words.length}</option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-        </label>
+          <ChapterPicker value={`${book.level.id}.${ci}`} onPick={(v) => { const [level, chapter] = v.split('.'); update({ level, chapter: Number(chapter) }); }}
+            groups={books.map(({ level, chapters }) => ({
+              label: level.title,
+              options: chapters.map((c, i) => ({
+                value: `${level.id}.${i}`, n: i + 1, title: c.title, total: c.words.length, learned: c.words.filter((w) => known.has(wordId(level, w))).length,
+              })),
+            }))} />
+        </div>
         {[['Front', from, (id) => update({ from: id, to: fixTo(vocab.lang, id, to) }), () => true],
           ['Back', to, (id) => update({ to: id }), (id) => pairAllowed(vocab.lang, from, id)]].map(([name, value, pick, ok]) => (
           <div key={name} role="group" aria-label={name} className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -271,6 +268,94 @@ function Vocab({ vocab, tab, known, updateKnown, setLesson }) {
         </div>
       </div>
     </DeckView>
+  );
+}
+
+// The chapter picker: a button that opens the chapters as a list grouped by level, each with its learned count, styled
+// like the app (a native <select> popup can't be). Keys follow the select-only combobox pattern: ↓ ↑ Enter Space open
+// it, then ↓ ↑ Home End PageUp PageDown move, Enter or Space picks, Esc closes, Tab closes and moves on. Keys it uses
+// stop here, so the study shortcuts (on window) don't also flip or answer the card.
+function ChapterPicker({ groups, value, onPick }) {
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(value);
+  const root = useRef(null);
+  const list = useRef(null);
+  const id = useId();
+  const options = groups.flatMap((g) => g.options);
+  const current = options.find((o) => o.value === value);
+  const show = () => { setActive(value); setOpen(true); };
+  const pick = (v) => { setOpen(false); if (v !== value) onPick(v); };
+
+  useEffect(() => { // a press anywhere else closes it
+    if (!open) return undefined;
+    const away = (e) => { if (!root.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('pointerdown', away);
+    return () => document.removeEventListener('pointerdown', away);
+  }, [open]);
+  useLayoutEffect(() => { // keep the highlighted chapter (and its level's heading) in view, scrolling the list, not the page
+    const el = open && document.getElementById(`${id}-${active}`);
+    if (!el) return;
+    const box = list.current;
+    box.scrollTop = Math.min(Math.max(box.scrollTop, el.offsetTop + el.offsetHeight + 6 - box.clientHeight), el.offsetTop - 34);
+  }, [open, active, id]);
+
+  const onKeyDown = (e) => {
+    if (!open) {
+      if (!['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(e.key)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      show();
+      return;
+    }
+    if (e.key === 'Tab') { setOpen(false); return; }
+    e.stopPropagation();
+    const i = options.findIndex((o) => o.value === active);
+    const to = { ArrowDown: i + 1, ArrowUp: i - 1, Home: 0, End: options.length - 1, PageDown: i + 8, PageUp: i - 8 }[e.key];
+    if (to !== undefined) {
+      e.preventDefault();
+      setActive(options[Math.max(0, Math.min(options.length - 1, to))].value);
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      pick(active);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setOpen(false);
+    }
+  };
+  const count = (o) => <span className={`shrink-0 text-xs tabular-nums ${o.learned === o.total ? 'text-jade' : 'text-muted'}`}>{o.learned}/{o.total}</span>;
+
+  return (
+    <div ref={root} className="relative w-full sm:w-80">
+      <div role="combobox" tabIndex={0} aria-label="Chapter" aria-haspopup="listbox" aria-expanded={open} aria-controls={open ? `${id}-list` : undefined}
+        aria-activedescendant={open ? `${id}-${active}` : undefined} onKeyDown={onKeyDown} onClick={() => (open ? setOpen(false) : show())}
+        className="flex h-10 cursor-pointer select-none items-center gap-2.5 rounded-xl border border-white/10 bg-black/20 px-3 text-sm transition hover:border-white/25 aria-expanded:border-white/25">
+        <span className="w-5 shrink-0 text-right text-xs tabular-nums text-muted">{current.n}</span>
+        <span className="min-w-0 flex-1 truncate">{current.title}</span>
+        {count(current)}
+        <ChevronDown size={16} aria-hidden className={`shrink-0 text-muted transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+      </div>
+      {open && (
+        // mousedown is cancelled so a click on a chapter leaves the focus on the button
+        <div ref={list} id={`${id}-list`} role="listbox" aria-label="Chapters" onMouseDown={(e) => e.preventDefault()}
+          className="pop absolute inset-x-0 top-full z-20 mt-2 max-h-80 overflow-y-auto overscroll-contain rounded-2xl border border-white/10 bg-[#141416] p-1.5 shadow-2xl">
+          {groups.map((g) => (
+            <div key={g.label} role="group" aria-label={g.label}>
+              <div aria-hidden className="px-2.5 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted/60">{g.label}</div>
+              {g.options.map((o) => (
+                <div key={o.value} id={`${id}-${o.value}`} role="option" aria-selected={o.value === value}
+                  onPointerMove={() => setActive(o.value)} onClick={() => pick(o.value)}
+                  className={`flex cursor-pointer items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm transition-colors ${o.value === active ? 'bg-white/[0.07]' : ''}`}>
+                  <span className="w-5 shrink-0 text-right text-xs tabular-nums text-muted">{o.n}</span>
+                  <span className={`min-w-0 flex-1 truncate ${o.value === value ? 'font-semibold text-ink' : 'text-ink/85'}`}>{o.title}</span>
+                  {count(o)}
+                  <Check size={14} aria-hidden className={`shrink-0 text-seal ${o.value === value ? '' : 'invisible'}`} />
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
