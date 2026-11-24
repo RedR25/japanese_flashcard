@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ArrowRight, Crosshair, Layers, LayoutDashboard, LayoutGrid, Rocket, Search as SearchIcon, ShieldCheck } from 'lucide-react';
 import { DECKS, LANGS, fontOf, gradient, langAttr } from './decks';
 import { norm } from './asteroids-logic.js';
-import { VOCAB, learnedIn } from './vocab';
+import { VOCAB, learnedIn, wordsIn } from './vocab';
 import { UserMenu } from './account';
 import Chat from './Chat';
 
@@ -66,7 +66,7 @@ export function Shell({ here, account, known, lesson, children }) {
               <span className="ml-auto hidden pl-2 text-xs tabular-nums text-muted lg:block">{pct(count(d.cards, known), d.cards.length)}%</span>))}
             {group('Vocab')}
             {VOCAB.map((l) => link(`#/v/${l.id}`, l.id, l.title, <Emblem deck={l} className="h-6 w-6 rounded-md text-[11px]" />,
-              <span className="ml-auto hidden pl-2 text-xs tabular-nums text-muted lg:block">{pct(learnedIn(l, known), l.words)}%</span>))}
+              <span className="ml-auto hidden pl-2 text-xs tabular-nums text-muted lg:block">{pct(learnedIn(l, known), wordsIn(l))}%</span>))}
             {group('Practice')}
             {link('#/play', 'play', 'Asteroid Shooter', <Rocket size={18} className="shrink-0" />)}
             {link('#/range', 'range', 'Word Range', <Crosshair size={18} className="shrink-0" />)}

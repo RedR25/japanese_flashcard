@@ -86,7 +86,7 @@ export default function App() {
         {admin ? <Admin account={account} />
           : play ? <Asteroids key={route[1] || ''} initialDeck={getDeck(route[1])?.id} reading={reading} setReading={chooseReading} />
           : range ? <Suspense fallback={<Loading />}><Range /></Suspense>
-          : vocab ? <Suspense fallback={<Loading />}><Vocab key={vocab.id} level={vocab} tab={route[2] === 'browse' ? 'browse' : 'study'} known={known} updateKnown={updateKnown} setLesson={setLesson} /></Suspense>
+          : vocab ? <Suspense fallback={<Loading />}><Vocab key={vocab.id} vocab={vocab} tab={route[2] === 'browse' ? 'browse' : 'study'} known={known} updateKnown={updateKnown} setLesson={setLesson} /></Suspense>
           : deck ? <DeckView deck={deck} tab={route[2] === 'browse' ? 'browse' : 'study'} known={known} updateKnown={updateKnown}
             reverse={reverse} toggleReverse={toggleReverse} reading={reading} setReading={chooseReading} setLesson={setLesson} />
           : <Dashboard known={known} account={account} last={getDeck(load('moji.last', null)) || DECKS[0]} />}
@@ -195,24 +195,28 @@ function Gate({ account, openAuth }) {
   );
 }
 
-// Vocab: one chapter of a word list (vocab.js) as flip cards, in the pair of sides you pick (front → back), on the deck
-// page's Study and Browse. The list loads on first visit; the chapter and pair are remembered per level.
-const lists = new Map(); // level id → promise of its chapters (null if the list failed to load), fetched once
+// Vocab: one language's words (vocab.js) as flip cards, a chapter at a time, in the pair of sides you pick (front →
+// back), on the deck page's Study and Browse. Its lists load on first visit; level, chapter and pair are remembered per
+// language.
+const lists = new Map(); // language id → promise of [{ level, chapters }] for its levels (null if a list failed to load)
 const LABEL = 'w-16 shrink-0 text-xs font-semibold uppercase tracking-wider text-muted';
 const chip = (on) => `rounded-full border px-3.5 py-1.5 text-sm transition disabled:pointer-events-none disabled:opacity-30 ${on ? 'border-seal bg-seal/10 text-ink' : 'border-white/10 text-muted hover:border-white/25 hover:text-ink'}`;
 const cjk = (side) => (side === 'zh' || side === 'ja' ? side : null); // only the 中文 and 日本語 labels are CJK text
 
-function Vocab({ level, tab, known, updateKnown, setLesson }) {
-  if (!lists.has(level.id)) lists.set(level.id, level.load().then((m) => m.default, () => null));
-  const chapters = use(lists.get(level.id));
-  const [pref, setPref] = useState(() => vocabPrefs(level, load('moji.vocab', {})));
-  const ci = Math.min(pref.chapter, (chapters?.length ?? 1) - 1);
+function Vocab({ vocab, tab, known, updateKnown, setLesson }) {
+  if (!lists.has(vocab.id)) {
+    lists.set(vocab.id, Promise.all(vocab.levels.map((level) => level.load().then((m) => ({ level, chapters: m.default })))).catch(() => null));
+  }
+  const books = use(lists.get(vocab.id));
+  const [pref, setPref] = useState(() => vocabPrefs(vocab, load('moji.vocab', {})));
+  const book = books?.find((b) => b.level.id === pref.level);
+  const ci = book ? Math.min(pref.chapter, book.chapters.length - 1) : 0;
   const { from, to } = pref;
-  const deck = useMemo(() => chapters && vocabDeck(level, chapters, ci, from, to), [level, chapters, ci, from, to]);
-  if (!chapters) {
+  const deck = useMemo(() => book && vocabDeck(vocab, book.level, book.chapters, ci, from, to), [vocab, book, ci, from, to]);
+  if (!book) {
     return (
       <p className="py-24 text-center text-sm text-muted">
-        Couldn’t load the {level.title} words.{' '}
+        Couldn’t load the {vocab.title} words.{' '}
         <button onClick={() => window.location.reload()} className="font-semibold text-ink hover:underline">Reload</button>
       </p>
     );
@@ -220,7 +224,7 @@ function Vocab({ level, tab, known, updateKnown, setLesson }) {
 
   const update = (patch) => setPref((p) => {
     const next = { ...p, ...patch };
-    save('moji.vocab', { ...load('moji.vocab', {}), [level.id]: next });
+    save('moji.vocab', { ...load('moji.vocab', {}), [vocab.id]: next });
     return next;
   });
   const example = deck.cards[0];
@@ -229,15 +233,19 @@ function Vocab({ level, tab, known, updateKnown, setLesson }) {
       <div className="mb-6 grid gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
         <label className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <span className={LABEL}>Chapter</span>
-          <select value={ci} onChange={(e) => update({ chapter: Number(e.target.value) })}
+          <select value={`${book.level.id}.${ci}`} onChange={(e) => { const [level, chapter] = e.target.value.split('.'); update({ level, chapter: Number(chapter) }); }}
             className="h-10 w-full rounded-xl border border-white/10 bg-black/20 px-3 text-sm text-ink outline-none transition focus:border-white/25 sm:w-auto">
-            {chapters.map((c, i) => (
-              <option key={i} value={i}>{i + 1}. {c.title} · {c.words.filter((w) => known.has(wordId(level, w))).length}/{c.words.length}</option>
+            {books.map(({ level, chapters }) => (
+              <optgroup key={level.id} label={level.title}>
+                {chapters.map((c, i) => (
+                  <option key={i} value={`${level.id}.${i}`}>{i + 1}. {c.title} · {c.words.filter((w) => known.has(wordId(level, w))).length}/{c.words.length}</option>
+                ))}
+              </optgroup>
             ))}
           </select>
         </label>
-        {[['Front', from, (id) => update({ from: id, to: fixTo(level.lang, id, to) }), () => true],
-          ['Back', to, (id) => update({ to: id }), (id) => pairAllowed(level.lang, from, id)]].map(([name, value, pick, ok]) => (
+        {[['Front', from, (id) => update({ from: id, to: fixTo(vocab.lang, id, to) }), () => true],
+          ['Back', to, (id) => update({ to: id }), (id) => pairAllowed(vocab.lang, from, id)]].map(([name, value, pick, ok]) => (
           <div key={name} role="group" aria-label={name} className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <span className={LABEL}>{name}</span>
             <div className="flex flex-wrap gap-2">
@@ -280,9 +288,9 @@ function DeckView({ deck, tab, known, updateKnown, reverse, toggleReverse, readi
         <Emblem deck={deck} className="h-12 w-12 rounded-2xl text-xl" />
         <div className="mr-auto min-w-0">
           <h1 className="flex items-baseline gap-2 text-2xl font-semibold tracking-tight">
-            {deck.title}<span className={`${fontOf(deck)} text-base font-medium text-muted`} lang={langAttr(deck)}>{deck.native}</span>
+            {deck.heading ?? deck.title}<span className={`${fontOf(deck)} text-base font-medium text-muted`} lang={langAttr(deck)}>{deck.native}</span>
           </h1>
-          <p className="text-xs tabular-nums text-muted">{learned} of {deck.cards.length} learned</p>
+          <p className="text-xs tabular-nums text-muted">{deck.heading && `${deck.title} · `}{learned} of {deck.cards.length} learned</p>
         </div>
         <nav className="flex rounded-xl bg-line/60 p-1">
           <a href={href} className={tabClass('study')}><Layers size={15} />Study</a>
